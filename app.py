@@ -40,29 +40,52 @@ def init_database_if_needed():
         
         exists = cur.fetchone()[0]
         cur.close()
-        conn.close()
         
         if not exists:
             print("=" * 60)
             print("데이터베이스 테이블이 없습니다. 자동 생성 중...")
             print("=" * 60)
             
-            # 테이블 생성 스크립트 실행
-            import subprocess
-            script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'db', 'init_tables_on_startup.py')
-            if os.path.exists(script_path):
-                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True)
-                print(result.stdout)
-                if result.returncode != 0:
-                    print(f"⚠️ 테이블 생성 중 경고: {result.stderr}")
-            else:
-                print("⚠️ 테이블 생성 스크립트를 찾을 수 없습니다.")
-                print("Render Dashboard → Shell에서 다음 명령어를 실행하세요:")
-                print("python scripts/db/setup_render_db.py")
+            # SQL 파일 읽기
+            sql_file_path = os.path.join(os.path.dirname(__file__), 'scripts', 'db', 'create_tables_postgresql.sql')
+            if not os.path.exists(sql_file_path):
+                # 상대 경로로 찾기
+                sql_file_path = 'scripts/db/create_tables_postgresql.sql'
             
-            print("=" * 60)
+            if os.path.exists(sql_file_path):
+                with open(sql_file_path, 'r', encoding='utf-8') as f:
+                    sql_content = f.read()
+                
+                # SQL 실행 (세미콜론으로 구분된 각 문장 실행)
+                statements = [s.strip() for s in sql_content.split(';') if s.strip() and not s.strip().startswith('--')]
+                
+                executed = 0
+                for statement in statements:
+                    if statement:
+                        try:
+                            cur = conn.cursor()
+                            cur.execute(statement)
+                            conn.commit()
+                            executed += 1
+                            cur.close()
+                        except Exception as e:
+                            # 일부 오류는 무시 (예: 이미 존재하는 확장 기능, 테이블 등)
+                            if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
+                                print(f"⚠️ SQL 실행 중 오류 (무시 가능): {str(e)[:100]}")
+                            conn.rollback()
+                            if cur:
+                                cur.close()
+                
+                print(f"✅ {executed}개 SQL 문장 실행 완료")
+                print("=" * 60)
+            else:
+                print("⚠️ SQL 파일을 찾을 수 없습니다.")
+            
+            conn.close()
     except Exception as e:
-        print(f"⚠️ 데이터베이스 초기화 확인 중 오류 (무시 가능): {e}")
+        print(f"⚠️ 데이터베이스 초기화 확인 중 오류: {e}")
+        import traceback
+        traceback.print_exc()
 
 # 데이터베이스 설정 (환경 변수 지원)
 def get_db_config():
