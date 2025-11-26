@@ -436,7 +436,6 @@ def get_bills():
                 b.title,
                 b.proposal_date,
                 b.proposer_kind,
-                b.proposer_name,
                 b.proc_stage_cd,
                 b.pass_gubn,
                 b.proc_date,
@@ -452,7 +451,7 @@ def get_bills():
             LEFT JOIN votes v ON b.bill_id = v.bill_id
             WHERE {where_clause}
             GROUP BY b.bill_id, b.bill_no, b.title, b.proposal_date, 
-                     b.proposer_kind, b.proposer_name, b.proc_stage_cd, b.pass_gubn, 
+                     b.proposer_kind, b.proc_stage_cd, b.pass_gubn, 
                      b.proc_date, b.general_result, b.link_url
             ORDER BY {order_by}
             LIMIT %s OFFSET %s
