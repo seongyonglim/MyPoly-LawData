@@ -52,15 +52,23 @@ def init_database_if_needed():
                 # 상대 경로로 찾기
                 sql_file_path = 'scripts/db/create_tables_postgresql.sql'
             
+            print(f"SQL 파일 경로: {sql_file_path}")
+            print(f"파일 존재 여부: {os.path.exists(sql_file_path)}")
+            
             if os.path.exists(sql_file_path):
                 with open(sql_file_path, 'r', encoding='utf-8') as f:
                     sql_content = f.read()
                 
+                print(f"SQL 파일 크기: {len(sql_content)} bytes")
+                
                 # SQL 실행 (세미콜론으로 구분된 각 문장 실행)
                 statements = [s.strip() for s in sql_content.split(';') if s.strip() and not s.strip().startswith('--')]
                 
+                print(f"실행할 SQL 문장 수: {len(statements)}")
+                
                 executed = 0
-                for statement in statements:
+                errors = 0
+                for i, statement in enumerate(statements, 1):
                     if statement:
                         try:
                             cur = conn.cursor()
@@ -68,18 +76,40 @@ def init_database_if_needed():
                             conn.commit()
                             executed += 1
                             cur.close()
+                            if i % 10 == 0:
+                                print(f"진행 중... {i}/{len(statements)} 문장 실행 완료")
                         except Exception as e:
+                            errors += 1
                             # 일부 오류는 무시 (예: 이미 존재하는 확장 기능, 테이블 등)
-                            if 'already exists' not in str(e).lower() and 'duplicate' not in str(e).lower():
-                                print(f"⚠️ SQL 실행 중 오류 (무시 가능): {str(e)[:100]}")
+                            error_msg = str(e).lower()
+                            if 'already exists' not in error_msg and 'duplicate' not in error_msg:
+                                print(f"⚠️ SQL 문장 {i} 실행 중 오류: {str(e)[:150]}")
                             conn.rollback()
                             if cur:
                                 cur.close()
                 
-                print(f"✅ {executed}개 SQL 문장 실행 완료")
+                print(f"✅ {executed}개 SQL 문장 실행 완료 (오류: {errors}개)")
+                
+                # 테이블 생성 확인
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                created_tables = [row[0] for row in cur.fetchall()]
+                cur.close()
+                print(f"생성된 테이블: {', '.join(created_tables) if created_tables else '없음'}")
                 print("=" * 60)
             else:
-                print("⚠️ SQL 파일을 찾을 수 없습니다.")
+                print(f"⚠️ SQL 파일을 찾을 수 없습니다: {sql_file_path}")
+                print(f"현재 작업 디렉토리: {os.getcwd()}")
+                print(f"파일 목록:")
+                for root, dirs, files in os.walk('.'):
+                    if 'create_tables' in ' '.join(files):
+                        print(f"  {root}")
             
             conn.close()
     except Exception as e:
