@@ -61,30 +61,102 @@ def init_database_if_needed():
                 
                 print(f"SQL 파일 크기: {len(sql_content)} bytes")
                 
-                # PostgreSQL은 여러 SQL 문을 한 번에 실행할 수 있습니다
-                # psycopg2.extensions를 사용하여 전체 SQL을 한 번에 실행
+                # psycopg2는 여러 SQL 문을 한 번에 실행할 수 없으므로
+                # SQL 파일을 스마트하게 파싱하여 각 문장을 개별 실행
                 try:
-                    # autocommit 모드로 설정하여 모든 SQL 문을 실행
                     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
                     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
                     
                     cur = conn.cursor()
-                    # SQL 파일 전체를 한 번에 실행
-                    cur.execute(sql_content)
+                    
+                    # SQL 파일을 파싱하여 문장 단위로 분리
+                    # 주의: 함수, 트리거 등은 여러 줄에 걸쳐 있으므로 $$ 구분자를 고려
+                    statements = []
+                    current_statement = []
+                    in_dollar_quote = False
+                    dollar_tag = None
+                    lines = sql_content.split('\n')
+                    
+                    for line in lines:
+                        # 주석 라인 제거
+                        stripped = line.strip()
+                        if stripped.startswith('--') and not in_dollar_quote:
+                            continue
+                        
+                        # $$ 구분자 감지 (함수, 트리거 등)
+                        if '$$' in line:
+                            if not in_dollar_quote:
+                                # $$ 시작
+                                dollar_tag = line[line.index('$$'):line.index('$$') + 2]
+                                in_dollar_quote = True
+                                current_statement.append(line)
+                            elif dollar_tag in line:
+                                # $$ 종료
+                                in_dollar_quote = False
+                                current_statement.append(line)
+                                # 세미콜론이 있으면 문장 완료
+                                if ';' in line:
+                                    stmt = '\n'.join(current_statement).strip()
+                                    if stmt:
+                                        statements.append(stmt)
+                                    current_statement = []
+                                dollar_tag = None
+                            else:
+                                current_statement.append(line)
+                        elif in_dollar_quote:
+                            # $$ 구분자 내부
+                            current_statement.append(line)
+                        elif stripped.endswith(';') and not in_dollar_quote:
+                            # 일반 SQL 문장 종료
+                            current_statement.append(line)
+                            stmt = '\n'.join(current_statement).strip()
+                            if stmt and not stmt.startswith('--'):
+                                statements.append(stmt)
+                            current_statement = []
+                        else:
+                            # 문장 계속
+                            if stripped or current_statement:  # 빈 줄이 아닌 경우만 추가
+                                current_statement.append(line)
+                    
+                    # 마지막 문장 처리
+                    if current_statement:
+                        stmt = '\n'.join(current_statement).strip()
+                        if stmt and not stmt.startswith('--'):
+                            statements.append(stmt)
+                    
+                    print(f"파싱된 SQL 문장 수: {len(statements)}")
+                    
+                    # 각 문장 실행
+                    executed = 0
+                    errors = 0
+                    for i, statement in enumerate(statements, 1):
+                        if not statement or statement.strip() == '':
+                            continue
+                        try:
+                            cur.execute(statement)
+                            executed += 1
+                            if i % 10 == 0:
+                                print(f"진행 중... {i}/{len(statements)} 문장 실행 완료")
+                        except Exception as e:
+                            errors += 1
+                            error_msg = str(e).lower()
+                            # 일부 오류는 무시 (이미 존재하는 객체 등)
+                            if 'already exists' not in error_msg and 'duplicate' not in error_msg:
+                                print(f"⚠️ SQL 문장 {i} 실행 중 오류: {str(e)[:150]}")
+                                if i <= 5:  # 처음 5개 오류만 상세 출력
+                                    print(f"   문장 내용: {statement[:100]}...")
+                    
                     cur.close()
+                    conn.set_isolation_level(0)  # 트랜잭션 모드로 복귀
                     
-                    print("✅ SQL 파일 실행 완료")
-                    
-                    # autocommit 모드 해제 (다시 트랜잭션 모드로)
-                    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-                    conn.set_isolation_level(0)  # 기본 트랜잭션 모드로 복귀
+                    print(f"✅ {executed}개 SQL 문장 실행 완료 (오류: {errors}개)")
                     
                 except Exception as e:
-                    # autocommit 모드에서 오류 발생 시
                     error_msg = str(e).lower()
                     if 'already exists' not in error_msg and 'duplicate' not in error_msg:
                         print(f"⚠️ SQL 실행 중 오류: {str(e)[:200]}")
-                        # 오류가 발생해도 계속 진행 (일부는 이미 존재할 수 있음)
+                        import traceback
+                        traceback.print_exc()
                     try:
                         conn.set_isolation_level(0)  # 트랜잭션 모드로 복귀
                     except:
