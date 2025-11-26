@@ -740,5 +740,7 @@ if __name__ == '__main__':
     print(f"DB 구조 페이지: http://localhost:{port}/db-structure")
     print(f"ERD 페이지: http://localhost:{port}/erd")
     print("=" * 60)
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    
+    # 프로덕션 환경에서는 gunicorn 사용 권장, 개발 환경에서는 Flask 개발 서버 사용
+    app.run(debug=debug, host='0.0.0.0', port=port, threaded=True)
 
