@@ -1,6 +1,29 @@
 # 데이터 수집 가이드
 
-## 순서
+## 🚀 빠른 시작: 로컬 DB 데이터 이전 (권장)
+
+로컬 DB에 이미 데이터가 있다면, API에서 다시 수집할 필요 없이 **직접 이전**할 수 있습니다:
+
+```bash
+# 환경 변수 설정 (Render DB 정보)
+set DB_HOST=dpg-d4jhgdfgi27c739n9m20-a
+set DB_PORT=5432
+set DB_NAME=mypoly_lawdata
+set DB_USER=mypoly_user
+set DB_PASSWORD=vvqeu5p1pty5ZhxsbbqFGAiufGeBYuIE
+
+# 데이터 이전 실행
+python scripts/db/transfer_data_to_render.py
+```
+
+이 방법이 **훨씬 빠르고 효율적**입니다:
+- ⚡ 시간: 수 분 (API 수집은 수 시간)
+- 💰 비용: API 호출 제한 없음
+- ✅ 안정성: 이미 검증된 데이터 사용
+
+---
+
+## 📊 API에서 데이터 수집 (로컬에 데이터가 없는 경우)
 
 데이터 수집은 다음 순서로 진행하세요:
 
