@@ -21,6 +21,49 @@ if sys.platform == 'win32':
 
 app = Flask(__name__)
 
+# 앱 시작 시 테이블 자동 생성 (테이블이 없을 경우)
+def init_database_if_needed():
+    """데이터베이스 테이블이 없으면 자동 생성"""
+    try:
+        config = get_db_config()
+        conn = psycopg2.connect(**config)
+        cur = conn.cursor()
+        
+        # bills 테이블 존재 여부 확인
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'bills'
+            );
+        """)
+        
+        exists = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        
+        if not exists:
+            print("=" * 60)
+            print("데이터베이스 테이블이 없습니다. 자동 생성 중...")
+            print("=" * 60)
+            
+            # 테이블 생성 스크립트 실행
+            import subprocess
+            script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'db', 'init_tables_on_startup.py')
+            if os.path.exists(script_path):
+                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True)
+                print(result.stdout)
+                if result.returncode != 0:
+                    print(f"⚠️ 테이블 생성 중 경고: {result.stderr}")
+            else:
+                print("⚠️ 테이블 생성 스크립트를 찾을 수 없습니다.")
+                print("Render Dashboard → Shell에서 다음 명령어를 실행하세요:")
+                print("python scripts/db/setup_render_db.py")
+            
+            print("=" * 60)
+    except Exception as e:
+        print(f"⚠️ 데이터베이스 초기화 확인 중 오류 (무시 가능): {e}")
+
 # 데이터베이스 설정 (환경 변수 지원)
 def get_db_config():
     """환경 변수에서 데이터베이스 설정 가져오기"""
@@ -726,6 +769,9 @@ def db_structure():
     finally:
         cur.close()
         conn.close()
+
+# 앱 시작 시 데이터베이스 초기화
+init_database_if_needed()
 
 if __name__ == '__main__':
     # 프로덕션 환경에서는 PORT 환경 변수 사용 (Render, Railway 등)
