@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2025년 의안 표결 결과 대시보드</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- 네비게이션 -->
+        <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="/db-structure" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: transform 0.2s;">
+                📋 테이블 구조 보기
+            </a>
+            <a href="/erd" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: transform 0.2s;">
+                🔗 ERD (테이블 관계도)
+            </a>
+        </div>
+        
+        <!-- 헤더 -->
+        <header class="header">
+            <h1>📊 2025년 의안 표결 결과</h1>
+            <p class="subtitle">국회의원 표결 정보를 한눈에 확인하세요</p>
+        </header>
+
+        <!-- 통계 대시보드 -->
+        <section class="stats-section" id="statsSection">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📋</div>
+                    <div class="stat-value" id="totalBills">-</div>
+                    <div class="stat-label">전체 의안</div>
+                </div>
+                <div class="stat-card stat-card-warning">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-value" id="pendingBills">-</div>
+                    <div class="stat-label">계류의안</div>
+                    <div class="stat-sublabel" id="pendingBillsPercent">-</div>
+                </div>
+                <div class="stat-card stat-card-success">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-value" id="processedBills">-</div>
+                    <div class="stat-label">처리의안</div>
+                    <div class="stat-sublabel" id="processedBillsPercent">-</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); color: #2e7d32; border: 1px solid #81c784;">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-value" id="processedWithVotes">-</div>
+                    <div class="stat-label">처리의안 중 표결 결과 있음</div>
+                    <div class="stat-sublabel" id="processedWithVotesPercent">-</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); color: #e65100; border: 1px solid #ffb74d;">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-value" id="processedNoVotes">-</div>
+                    <div class="stat-label">처리의안 중 표결 결과 없음</div>
+                    <div class="stat-sublabel" id="processedNoVotesPercent">-</div>
+                </div>
+            </div>
+            
+            <!-- 진행단계별 통계 -->
+            <div id="procStageStats" style="margin-top: 30px; padding: 25px; background: #ffffff; border-radius: 15px; border: 1px solid #e9ecef;"></div>
+
+            <!-- 정보 안내 -->
+            <div class="info-box">
+                <h3>📊 의안 상태 안내</h3>
+                <div class="info-content">
+                    <p><strong>표결 결과 없음</strong>의 대부분은 아직 위원회 심사 단계에 있는 의안입니다. 국회 의안 처리 과정은 다음과 같습니다:</p>
+                    <ul>
+                        <li><strong>접수</strong> → <strong>소관위접수</strong> → <strong>소관위심사</strong> → <strong>본회의의결</strong> → <strong>처리완료</strong></li>
+                        <li>대부분의 의안은 <strong>소관위심사</strong> 단계에서 오래 머무르며, 이는 정상적인 과정입니다.</li>
+                    </ul>
+                    <p style="margin-top: 15px;"><strong>처리완료인데 표결 결과가 없는 의안 (약 58.6%):</strong></p>
+                    <ul>
+                        <li><strong>대안반영폐기</strong>: 위원회에서 대안을 마련하여 원안이 폐기된 경우. 대안이 본회의에서 표결되므로 원안에는 표결 결과가 없습니다.</li>
+                        <li><strong>철회</strong>: 제안자가 의안을 철회한 경우.</li>
+                        <li><strong>기타</strong>: 국정감사 결과보고서 채택 등 표결이 필요 없는 의안.</li>
+                    </ul>
+                    <p style="margin-top: 15px; color: #6c757d; font-size: 0.9em;">※ 표결 결과가 없는 의안의 상세 정보는 국회 홈페이지에서 확인하실 수 있습니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 필터 섹션 -->
+        <section class="filter-section">
+            <div class="filter-controls">
+                <div class="filter-group filter-group-search">
+                    <label for="searchInput">제목 검색:</label>
+                    <input type="text" id="searchInput" class="filter-input" placeholder="의안 제목을 입력하세요..." />
+                </div>
+                <div class="filter-group">
+                    <label for="monthFilter">월별 필터:</label>
+                    <select id="monthFilter" class="filter-select">
+                        <option value="">전체 기간</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="sortBy">정렬 기준:</label>
+                    <select id="sortBy" class="filter-select">
+                        <option value="proposal_date">제안일</option>
+                        <option value="vote_count">표결 수</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="orderBy">정렬 순서:</label>
+                    <select id="orderBy" class="filter-select">
+                        <option value="desc">최신순</option>
+                        <option value="asc">과거순</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="passGubnFilter">처리구분:</label>
+                    <select id="passGubnFilter" class="filter-select">
+                        <option value="">전체</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="procStageFilter">진행단계:</label>
+                    <select id="procStageFilter" class="filter-select">
+                        <option value="">전체</option>
+                    </select>
+                </div>
+                <button id="clearFilter" class="btn-secondary">초기화</button>
+            </div>
+            
+            <!-- 활성 필터 표시 -->
+            <div id="activeFilters" class="active-filters" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                    <span style="font-weight: 600; color: #6c757d; font-size: 0.9rem;">적용된 필터:</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 로딩 인디케이터 -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <p>데이터를 불러오는 중...</p>
+        </div>
+
+        <!-- 의안 목록 -->
+        <section class="bills-section">
+            <div id="billsContainer" class="bills-grid">
+                <!-- 의안 카드들이 여기에 동적으로 추가됩니다 -->
+            </div>
+
+            <!-- 페이지네이션 -->
+            <div id="pagination" class="pagination"></div>
+        </section>
+    </div>
+
+    <!-- 의안 상세 모달 -->
+    <div id="billModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

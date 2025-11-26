@@ -1,0 +1,170 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+특정 날짜부터 표결 정보 수집 스크립트
+2025-10-15부터 현재까지
+"""
+
+import os
+import sys
+import psycopg2
+from xml.etree import ElementTree as ET
+import requests
+from datetime import datetime
+import time
+
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+DB_CONFIG = {
+    'host': 'localhost',
+    'database': 'mypoly_lawdata',
+    'user': 'postgres',
+    'password': 'maza_970816',
+    'port': 5432
+}
+
+ASSEMBLY_KEY = os.environ.get(
+    "ASSEMBLY_SERVICE_KEY",
+    "5e85053066dd409b81ed7de0f47bbcab"
+)
+
+VOTE_INFO_API = "https://open.assembly.go.kr/portal/openapi/nojepdqqaweusdfbi"
+
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
+def parse_datetime(datetime_str):
+    if not datetime_str:
+        return None
+    try:
+        if len(datetime_str) == 14:
+            return datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
+        elif len(datetime_str) == 19:
+            return datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+    except:
+        pass
+    return None
+
+def collect_votes_from_date(start_date_str="20251015"):
+    """특정 날짜부터 표결 정보 수집"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    start_date = parse_datetime(start_date_str + "000000")
+    if not start_date:
+        print(f"  ❌ 잘못된 날짜 형식: {start_date_str}")
+        return
+    
+    print("=" * 60)
+    print(f"표결 정보 수집 시작 (표결일: {start_date_str} 이후)")
+    print("=" * 60)
+    
+    # bills 테이블에서 모든 bill_id 가져오기
+    cur.execute("SELECT DISTINCT bill_id FROM bills")
+    bill_ids = [row[0] for row in cur.fetchall()]
+    
+    print(f"\n{len(bill_ids)}개의 의안에 대한 표결 정보를 수집합니다...")
+    
+    total_inserted = 0
+    total_skipped = 0
+    
+    for i, bill_id in enumerate(bill_ids, 1):
+        if i % 50 == 0:
+            print(f"\n진행 상황: {i}/{len(bill_ids)}")
+        
+        params = {
+            "KEY": ASSEMBLY_KEY,
+            "Type": "xml",
+            "pIndex": 1,
+            "pSize": 300,
+            "BILL_ID": bill_id,
+            "AGE": "22"
+        }
+        
+        try:
+            response = requests.get(VOTE_INFO_API, params=params, timeout=30)
+            response.raise_for_status()
+            
+            root = ET.fromstring(response.text)
+            items = root.findall(".//row")
+            
+            if not items:
+                total_skipped += 1
+                continue
+            
+            page_inserted = 0
+            
+            for item in items:
+                member_no = item.findtext("MEMBER_NO", "").strip()
+                if not member_no:
+                    continue
+                
+                vote_date = parse_datetime(item.findtext("VOTE_DATE", ""))
+                
+                # 표결일이 시작일 이후인 것만 저장
+                if vote_date and vote_date < start_date:
+                    continue
+                
+                vote_result = item.findtext("RESULT_VOTE_MOD", "").strip()
+                member_name = item.findtext("HG_NM", "") or item.findtext("NAAS_NM", "")
+                member_name = member_name.strip() if member_name else ""
+                party_name = item.findtext("POLY_NM", "").strip()
+                district_name = item.findtext("ORIG_NM", "").strip()
+                mona_cd = item.findtext("MONA_CD", "").strip()
+                bill_no = item.findtext("BILL_NO", "").strip()
+                bill_name = item.findtext("BILL_NAME", "").strip()
+                
+                try:
+                    cur.execute("""
+                        INSERT INTO votes (
+                            bill_id, bill_no, bill_name, member_no, mona_cd, 
+                            vote_result, vote_date, member_name, party_name, district_name, created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                        )
+                        ON CONFLICT (bill_id, member_no, vote_date) 
+                        DO UPDATE SET
+                            vote_result = EXCLUDED.vote_result,
+                            member_name = EXCLUDED.member_name,
+                            party_name = EXCLUDED.party_name,
+                            district_name = EXCLUDED.district_name
+                    """, (
+                        bill_id, bill_no, bill_name, member_no, mona_cd,
+                        vote_result, vote_date, member_name, party_name, district_name
+                    ))
+                    
+                    if cur.rowcount > 0:
+                        page_inserted += 1
+                        total_inserted += 1
+                except Exception as e:
+                    print(f"    ⚠️ 표결 저장 오류: {e}")
+                    continue
+            
+            if page_inserted > 0:
+                conn.commit()
+            
+            time.sleep(0.5)  # API 호출 제한
+        
+        except Exception as e:
+            print(f"  ⚠️ 오류 (BILL_ID: {bill_id[:20]}...): {e}")
+            conn.rollback()
+            continue
+    
+    cur.close()
+    conn.close()
+    
+    print("\n" + "=" * 60)
+    print(f"수집 완료!")
+    print(f"  - 신규 삽입: {total_inserted}건")
+    print(f"  - 표결 데이터 없음: {total_skipped}건")
+    print("=" * 60)
+
+if __name__ == '__main__':
+    import sys
+    start_date = sys.argv[1] if len(sys.argv) > 1 else "20250101"
+    collect_votes_from_date(start_date)
+
