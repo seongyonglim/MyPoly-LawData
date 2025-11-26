@@ -19,14 +19,6 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'mypoly_lawdata',
-    'user': 'postgres',
-    'password': 'maza_970816',
-    'port': 5432
-}
-
 ENCODED_SERVICE_KEY = os.environ.get(
     "BILL_SERVICE_KEY",
     "MiXjfqnyhsYErA%2FKEzOyLNFwxzbd%2B7VE0k2%2FeVml32gs8WjdeVCOQb06tgG5UaQ7u5bb74Hibe8WkwopNsXceA%3D%3D"
@@ -35,8 +27,41 @@ SERVICE_KEY = unquote(ENCODED_SERVICE_KEY)
 
 BILL_INFO_API = "https://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList"
 
+def get_db_config():
+    """환경 변수에서 데이터베이스 설정 가져오기"""
+    # Railway는 DATABASE_URL 제공
+    if 'DATABASE_URL' in os.environ:
+        from urllib.parse import urlparse
+        db_url = urlparse(os.environ['DATABASE_URL'])
+        return {
+            'host': db_url.hostname,
+            'database': db_url.path[1:],  # / 제거
+            'user': db_url.username,
+            'password': db_url.password,
+            'port': db_url.port or 5432
+        }
+    # Render는 개별 환경 변수 제공
+    elif 'DB_HOST' in os.environ:
+        return {
+            'host': os.environ.get('DB_HOST'),
+            'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
+            'user': os.environ.get('DB_USER', 'postgres'),
+            'password': os.environ.get('DB_PASSWORD'),
+            'port': int(os.environ.get('DB_PORT', 5432))
+        }
+    # 로컬 개발용 (기본값)
+    else:
+        return {
+            'host': 'localhost',
+            'database': 'mypoly_lawdata',
+            'user': 'postgres',
+            'password': 'maza_970816',
+            'port': 5432
+        }
+
 def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+    config = get_db_config()
+    return psycopg2.connect(**config)
 
 def parse_date(date_str):
     if not date_str:
