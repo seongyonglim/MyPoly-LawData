@@ -61,47 +61,51 @@ def init_database_if_needed():
                 
                 print(f"SQL 파일 크기: {len(sql_content)} bytes")
                 
-                # SQL 실행 (세미콜론으로 구분된 각 문장 실행)
-                statements = [s.strip() for s in sql_content.split(';') if s.strip() and not s.strip().startswith('--')]
-                
-                print(f"실행할 SQL 문장 수: {len(statements)}")
-                
-                executed = 0
-                errors = 0
-                for i, statement in enumerate(statements, 1):
-                    if statement:
-                        try:
-                            cur = conn.cursor()
-                            cur.execute(statement)
-                            conn.commit()
-                            executed += 1
-                            cur.close()
-                            if i % 10 == 0:
-                                print(f"진행 중... {i}/{len(statements)} 문장 실행 완료")
-                        except Exception as e:
-                            errors += 1
-                            # 일부 오류는 무시 (예: 이미 존재하는 확장 기능, 테이블 등)
-                            error_msg = str(e).lower()
-                            if 'already exists' not in error_msg and 'duplicate' not in error_msg:
-                                print(f"⚠️ SQL 문장 {i} 실행 중 오류: {str(e)[:150]}")
-                            conn.rollback()
-                            if cur:
-                                cur.close()
-                
-                print(f"✅ {executed}개 SQL 문장 실행 완료 (오류: {errors}개)")
+                # PostgreSQL은 여러 SQL 문을 한 번에 실행할 수 있습니다
+                # psycopg2.extensions를 사용하여 전체 SQL을 한 번에 실행
+                try:
+                    # autocommit 모드로 설정하여 모든 SQL 문을 실행
+                    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+                    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                    
+                    cur = conn.cursor()
+                    # SQL 파일 전체를 한 번에 실행
+                    cur.execute(sql_content)
+                    cur.close()
+                    
+                    print("✅ SQL 파일 실행 완료")
+                    
+                    # autocommit 모드 해제 (다시 트랜잭션 모드로)
+                    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                    conn.set_isolation_level(0)  # 기본 트랜잭션 모드로 복귀
+                    
+                except Exception as e:
+                    # autocommit 모드에서 오류 발생 시
+                    error_msg = str(e).lower()
+                    if 'already exists' not in error_msg and 'duplicate' not in error_msg:
+                        print(f"⚠️ SQL 실행 중 오류: {str(e)[:200]}")
+                        # 오류가 발생해도 계속 진행 (일부는 이미 존재할 수 있음)
+                    try:
+                        conn.set_isolation_level(0)  # 트랜잭션 모드로 복귀
+                    except:
+                        pass
                 
                 # 테이블 생성 확인
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT table_name
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
-                """)
-                created_tables = [row[0] for row in cur.fetchall()]
-                cur.close()
-                print(f"생성된 테이블: {', '.join(created_tables) if created_tables else '없음'}")
+                try:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT table_name
+                        FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_type = 'BASE TABLE'
+                        ORDER BY table_name
+                    """)
+                    created_tables = [row[0] for row in cur.fetchall()]
+                    cur.close()
+                    print(f"생성된 테이블: {', '.join(created_tables) if created_tables else '없음'}")
+                except Exception as e:
+                    print(f"⚠️ 테이블 확인 중 오류: {str(e)[:100]}")
+                
                 print("=" * 60)
             else:
                 print(f"⚠️ SQL 파일을 찾을 수 없습니다: {sql_file_path}")
