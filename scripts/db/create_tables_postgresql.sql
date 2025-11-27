@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS bills (
     title VARCHAR(500) NOT NULL,
     proposal_date DATE,
     proposer_kind VARCHAR(50),
+    proposer_name VARCHAR(100),  -- 제안자 이름 (의안 제목에서 추출)
     
     -- 진행 정보 (API 제공)
     proc_stage_cd VARCHAR(50),

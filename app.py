@@ -428,15 +428,26 @@ def get_bills():
         cur.execute(count_query, tuple(params_list))
         total = cur.fetchone()['total']
         
+        # proposer_name 컬럼 존재 여부 확인
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'bills' AND column_name = 'proposer_name'
+        """)
+        has_proposer_name = cur.fetchone() is not None
+        
         # 의안 목록 조회 (표결 결과 포함)
+        proposer_name_select = ", b.proposer_name" if has_proposer_name else ""
+        proposer_name_groupby = ", b.proposer_name" if has_proposer_name else ""
+        
         query = f"""
             SELECT 
                 b.bill_id,
                 b.bill_no,
                 b.title,
                 b.proposal_date,
-                b.proposer_kind,
-                b.proposer_name,
+                b.proposer_kind
+                {proposer_name_select},
                 b.proc_stage_cd,
                 b.pass_gubn,
                 b.proc_date,
@@ -452,7 +463,7 @@ def get_bills():
             LEFT JOIN votes v ON b.bill_id = v.bill_id
             WHERE {where_clause}
             GROUP BY b.bill_id, b.bill_no, b.title, b.proposal_date, 
-                     b.proposer_kind, b.proposer_name, b.proc_stage_cd, b.pass_gubn, 
+                     b.proposer_kind{proposer_name_groupby}, b.proc_stage_cd, b.pass_gubn, 
                      b.proc_date, b.general_result, b.link_url
             ORDER BY {order_by}
             LIMIT %s OFFSET %s
@@ -465,6 +476,9 @@ def get_bills():
         bills = []
         for row in cur.fetchall():
             bill = dict(row)
+            # proposer_name이 없으면 None으로 설정
+            if 'proposer_name' not in bill:
+                bill['proposer_name'] = None
             # 날짜 형식 변환
             bill['proposal_date'] = format_date_for_json(bill['proposal_date'])
             bill['proc_date'] = format_date_for_json(bill['proc_date'])
