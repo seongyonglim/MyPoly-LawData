@@ -67,11 +67,15 @@ def import_csv_to_table(csv_file, table_name, cloud_conn, cloud_cur):
                 # 빈 값 처리
                 values = []
                 for col in columns:
-                    val = row.get(col, '').strip()
-                    if val == '':
+                    val = row.get(col, '')
+                    if val is None:
                         values.append(None)
                     else:
-                        values.append(val)
+                        val = str(val).strip()
+                        if val == '':
+                            values.append(None)
+                        else:
+                            values.append(val)
                 
                 batch.append(values)
                 
