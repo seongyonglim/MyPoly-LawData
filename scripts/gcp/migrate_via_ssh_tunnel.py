@@ -124,9 +124,17 @@ def main():
     print("로컬 → Cloud SQL 데이터 마이그레이션 (SSH 터널링)")
     print("=" * 80)
     print("\n⚠️ 먼저 SSH 터널링을 설정하세요:")
+    print("   새 PowerShell 창에서:")
     print("   ssh -L 5433:127.0.0.1:5432 seongyonglim3@34.64.212.103")
-    print("   (별도 터미널에서 실행하고 유지)")
+    print("   (그 창은 계속 열어두세요)")
+    print("\n그 다음 이 스크립트를 실행하세요.")
     print("\n계속하시겠습니까? (y/n): ", end='')
+    
+    # 자동 진행
+    # response = input().strip().lower()
+    # if response != 'y':
+    #     print("취소되었습니다.")
+    #     return
     
     # 로컬 DB 연결
     print("\n[1] 로컬 DB 연결 중...")
