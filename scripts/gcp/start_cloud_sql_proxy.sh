@@ -39,13 +39,28 @@ nohup cloud_sql_proxy -instances=$CONNECTION_NAME=tcp:5432 > /tmp/cloud_sql_prox
 sleep 3
 
 # 실행 확인
+sleep 3
+
 if pgrep -f "cloud_sql_proxy" > /dev/null; then
     echo "✅ Cloud SQL Proxy 실행 중"
     echo "로그 확인: tail -f /tmp/cloud_sql_proxy.log"
     echo "프로세스 확인: ps aux | grep cloud_sql_proxy"
+    
+    # 로그 확인 (오류 체크)
+    if grep -q "ERROR\|error\|Error" /tmp/cloud_sql_proxy.log; then
+        echo ""
+        echo "⚠️ 로그에 오류가 있습니다. 확인하세요:"
+        tail -20 /tmp/cloud_sql_proxy.log
+    fi
 else
     echo "❌ Cloud SQL Proxy 실행 실패"
-    echo "로그 확인: cat /tmp/cloud_sql_proxy.log"
+    echo ""
+    echo "로그 확인:"
+    cat /tmp/cloud_sql_proxy.log
+    echo ""
+    echo "권한 오류인 경우:"
+    echo "1. GCP 콘솔 → IAM 및 관리자 → IAM"
+    echo "2. VM의 서비스 계정에 'Cloud SQL Client' 역할 추가"
     exit 1
 fi
 
