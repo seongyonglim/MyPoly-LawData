@@ -206,7 +206,6 @@
     <div class="db-structure-container">
         <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
             <a href="/" class="back-link">← 의안 대시보드로 돌아가기</a>
-            <a href="/erd" class="back-link" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">🔗 ERD (테이블 관계도)</a>
         </div>
         
         <div class="summary-section">
@@ -237,7 +236,19 @@
         <div class="table-card">
             <div class="table-header">
                 <div>
-                    <h2 class="table-title">📋 {{ table.table_name }}</h2>
+                    <h2 class="table-title">
+                        📋 {{ table.table_name }}
+                        {% if table.korean_name %}
+                        <span style="font-size: 1.2rem; color: #2196f3; font-weight: 600; margin-left: 10px;">
+                            {{ table.korean_name }}
+                        </span>
+                        {% endif %}
+                    </h2>
+                    {% if table.description %}
+                    <p style="color: #6c757d; margin: 8px 0 0 0; font-size: 0.95rem; line-height: 1.5;">
+                        {{ table.description }}
+                    </p>
+                    {% endif %}
                     <div class="table-meta" style="margin-top: 10px;">
                         <div class="table-meta-item">
                             <span>컬럼:</span>
@@ -277,7 +288,12 @@
                     <tbody>
                         {% for col in table.columns %}
                         <tr>
-                            <td><strong>{{ col.column_name }}</strong></td>
+                            <td>
+                                <strong>{{ col.column_name }}</strong>
+                                {% if col.korean_name %}
+                                <br><span style="color: #6c757d; font-size: 0.85rem; font-weight: normal; margin-top: 4px; display: inline-block;">{{ col.korean_name }}</span>
+                                {% endif %}
+                            </td>
                             <td><span class="type-badge">{{ col.data_type }}{% if col.max_length %}({{ col.max_length }}){% endif %}</span></td>
                             <td>
                                 <span class="null-badge {% if col.is_nullable == 'YES' %}yes{% else %}no{% endif %}">

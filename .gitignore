@@ -4,27 +4,19 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
 venv/
 env/
 ENV/
 .venv
+
+# Flask
+instance/
+.webassets-cache
+
+# Environment variables
+.env
+.env.local
+*.env
 
 # IDE
 .vscode/
@@ -33,29 +25,25 @@ ENV/
 *.swo
 *~
 
-# Environment variables
-.env
-.env.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-*.log
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
+# Logs
+*.log
+
+# Database
+*.sql
+*.db
+
+# GCP
+.gcloud/
+*.json
+service-account-key.json
+
+# AI 디렉토리 (중요 정보)
 AI/중요정보/
-*.bat
-*.sh
 
-# Temporary files
-*.tmp
+# 기타
 *.bak
-*~
-
+*.tmp

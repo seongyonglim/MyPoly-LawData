@@ -434,7 +434,6 @@ CREATE TABLE IF NOT EXISTS bill_similarity (
     
     -- 유사도 정보
     similarity_score REAL NOT NULL,  -- FLOAT → REAL
-    similarity_method VARCHAR(50),
     
     -- 메타 정보
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -450,13 +449,11 @@ COMMENT ON TABLE bill_similarity IS '의안 유사도';
 COMMENT ON COLUMN bill_similarity.bill_id_1 IS '의안ID 1';
 COMMENT ON COLUMN bill_similarity.bill_id_2 IS '의안ID 2';
 COMMENT ON COLUMN bill_similarity.similarity_score IS '유사도 점수 (0.0 ~ 1.0)';
-COMMENT ON COLUMN bill_similarity.similarity_method IS '유사도 계산 방법 (category/embedding/keyword)';
 
 -- bill_similarity 테이블 인덱스
 CREATE INDEX IF NOT EXISTS idx_similarity_score ON bill_similarity(similarity_score DESC);
 CREATE INDEX IF NOT EXISTS idx_bill_id_1 ON bill_similarity(bill_id_1);
 CREATE INDEX IF NOT EXISTS idx_bill_id_2 ON bill_similarity(bill_id_2);
-CREATE INDEX IF NOT EXISTS idx_similarity_method ON bill_similarity(similarity_method);
 
 -- ============================================
 -- 완료 메시지

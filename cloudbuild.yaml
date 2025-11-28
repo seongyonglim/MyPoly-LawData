@@ -1,0 +1,35 @@
+# Cloud Build 설정 파일
+# GitHub에 푸시하면 자동으로 GCP에 배포됨
+
+steps:
+  # 1. 코드를 VM에 복사
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'compute'
+      - 'scp'
+      - '--recurse'
+      - '.'
+      - 'mypoly-app-server:/home/app/MyPoly-LawData'
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=asia-northeast3-a'
+
+  # 2. VM에서 앱 재시작
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'compute'
+      - 'ssh'
+      - 'mypoly-app-server'
+      - '--command'
+      - |
+        cd /home/app/MyPoly-LawData
+        git pull origin main
+        source venv/bin/activate
+        pip install -r requirements.txt
+        sudo systemctl restart mypoly-app
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=asia-northeast3-a'
+
+timeout: '1200s'
+options:
+  machineType: 'N1_HIGHCPU_8'
+

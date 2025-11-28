@@ -21,210 +21,24 @@ if sys.platform == 'win32':
 
 app = Flask(__name__)
 
-# 앱 시작 시 테이블 자동 생성 (테이블이 없을 경우)
-def init_database_if_needed():
-    """데이터베이스 테이블이 없으면 자동 생성"""
-    try:
-        config = get_db_config()
-        conn = psycopg2.connect(**config)
-        cur = conn.cursor()
-        
-        # bills 테이블 존재 여부 확인
-        cur.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'bills'
-            );
-        """)
-        
-        exists = cur.fetchone()[0]
-        cur.close()
-        
-        if not exists:
-            print("=" * 60)
-            print("데이터베이스 테이블이 없습니다. 자동 생성 중...")
-            print("=" * 60)
-            
-            # SQL 파일 읽기
-            sql_file_path = os.path.join(os.path.dirname(__file__), 'scripts', 'db', 'create_tables_postgresql.sql')
-            if not os.path.exists(sql_file_path):
-                # 상대 경로로 찾기
-                sql_file_path = 'scripts/db/create_tables_postgresql.sql'
-            
-            print(f"SQL 파일 경로: {sql_file_path}")
-            print(f"파일 존재 여부: {os.path.exists(sql_file_path)}")
-            
-            if os.path.exists(sql_file_path):
-                with open(sql_file_path, 'r', encoding='utf-8') as f:
-                    sql_content = f.read()
-                
-                print(f"SQL 파일 크기: {len(sql_content)} bytes")
-                
-                # psycopg2는 여러 SQL 문을 한 번에 실행할 수 없으므로
-                # SQL 파일을 스마트하게 파싱하여 각 문장을 개별 실행
-                try:
-                    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-                    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-                    
-                    cur = conn.cursor()
-                    
-                    # SQL 파일을 파싱하여 문장 단위로 분리
-                    # 주의: 함수, 트리거 등은 여러 줄에 걸쳐 있으므로 $$ 구분자를 고려
-                    statements = []
-                    current_statement = []
-                    in_dollar_quote = False
-                    dollar_tag = None
-                    lines = sql_content.split('\n')
-                    
-                    for line in lines:
-                        # 주석 라인 제거
-                        stripped = line.strip()
-                        if stripped.startswith('--') and not in_dollar_quote:
-                            continue
-                        
-                        # $$ 구분자 감지 (함수, 트리거 등)
-                        if '$$' in line:
-                            if not in_dollar_quote:
-                                # $$ 시작
-                                dollar_tag = line[line.index('$$'):line.index('$$') + 2]
-                                in_dollar_quote = True
-                                current_statement.append(line)
-                            elif dollar_tag in line:
-                                # $$ 종료
-                                in_dollar_quote = False
-                                current_statement.append(line)
-                                # 세미콜론이 있으면 문장 완료
-                                if ';' in line:
-                                    stmt = '\n'.join(current_statement).strip()
-                                    if stmt:
-                                        statements.append(stmt)
-                                    current_statement = []
-                                dollar_tag = None
-                            else:
-                                current_statement.append(line)
-                        elif in_dollar_quote:
-                            # $$ 구분자 내부
-                            current_statement.append(line)
-                        elif stripped.endswith(';') and not in_dollar_quote:
-                            # 일반 SQL 문장 종료
-                            current_statement.append(line)
-                            stmt = '\n'.join(current_statement).strip()
-                            if stmt and not stmt.startswith('--'):
-                                statements.append(stmt)
-                            current_statement = []
-                        else:
-                            # 문장 계속
-                            if stripped or current_statement:  # 빈 줄이 아닌 경우만 추가
-                                current_statement.append(line)
-                    
-                    # 마지막 문장 처리
-                    if current_statement:
-                        stmt = '\n'.join(current_statement).strip()
-                        if stmt and not stmt.startswith('--'):
-                            statements.append(stmt)
-                    
-                    print(f"파싱된 SQL 문장 수: {len(statements)}")
-                    
-                    # 각 문장 실행
-                    executed = 0
-                    errors = 0
-                    for i, statement in enumerate(statements, 1):
-                        if not statement or statement.strip() == '':
-                            continue
-                        try:
-                            cur.execute(statement)
-                            executed += 1
-                            if i % 10 == 0:
-                                print(f"진행 중... {i}/{len(statements)} 문장 실행 완료")
-                        except Exception as e:
-                            errors += 1
-                            error_msg = str(e).lower()
-                            # 일부 오류는 무시 (이미 존재하는 객체 등)
-                            if 'already exists' not in error_msg and 'duplicate' not in error_msg:
-                                print(f"⚠️ SQL 문장 {i} 실행 중 오류: {str(e)[:150]}")
-                                if i <= 5:  # 처음 5개 오류만 상세 출력
-                                    print(f"   문장 내용: {statement[:100]}...")
-                    
-                    cur.close()
-                    conn.set_isolation_level(0)  # 트랜잭션 모드로 복귀
-                    
-                    print(f"✅ {executed}개 SQL 문장 실행 완료 (오류: {errors}개)")
-                    
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    if 'already exists' not in error_msg and 'duplicate' not in error_msg:
-                        print(f"⚠️ SQL 실행 중 오류: {str(e)[:200]}")
-                        import traceback
-                        traceback.print_exc()
-                    try:
-                        conn.set_isolation_level(0)  # 트랜잭션 모드로 복귀
-                    except:
-                        pass
-                
-                # 테이블 생성 확인
-                try:
-                    cur = conn.cursor()
-                    cur.execute("""
-                        SELECT table_name
-                        FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                        AND table_type = 'BASE TABLE'
-                        ORDER BY table_name
-                    """)
-                    created_tables = [row[0] for row in cur.fetchall()]
-                    cur.close()
-                    print(f"생성된 테이블: {', '.join(created_tables) if created_tables else '없음'}")
-                except Exception as e:
-                    print(f"⚠️ 테이블 확인 중 오류: {str(e)[:100]}")
-                
-                print("=" * 60)
-            else:
-                print(f"⚠️ SQL 파일을 찾을 수 없습니다: {sql_file_path}")
-                print(f"현재 작업 디렉토리: {os.getcwd()}")
-                print(f"파일 목록:")
-                for root, dirs, files in os.walk('.'):
-                    if 'create_tables' in ' '.join(files):
-                        print(f"  {root}")
-            
-            conn.close()
-    except Exception as e:
-        print(f"⚠️ 데이터베이스 초기화 확인 중 오류: {e}")
-        import traceback
-        traceback.print_exc()
 
-# 데이터베이스 설정 (환경 변수 지원)
+# 데이터베이스 설정 (로컬/GCP 모두 지원)
 def get_db_config():
-    """환경 변수에서 데이터베이스 설정 가져오기"""
-    # Railway는 DATABASE_URL 제공
-    if 'DATABASE_URL' in os.environ:
-        from urllib.parse import urlparse
-        db_url = urlparse(os.environ['DATABASE_URL'])
-        return {
-            'host': db_url.hostname,
-            'database': db_url.path[1:],  # / 제거
-            'user': db_url.username,
-            'password': db_url.password,
-            'port': db_url.port or 5432
-        }
-    # Render는 개별 환경 변수 제공
-    elif 'DB_HOST' in os.environ:
-        return {
-            'host': os.environ.get('DB_HOST'),
-            'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
-            'user': os.environ.get('DB_USER', 'postgres'),
-            'password': os.environ.get('DB_PASSWORD'),
-            'port': int(os.environ.get('DB_PORT', 5432))
-        }
-    # 로컬 개발용 (기본값)
-    else:
-        return {
-            'host': 'localhost',
-            'database': 'mypoly_lawdata',
-            'user': 'postgres',
-            'password': 'maza_970816',
-            'port': 5432
-        }
+    """데이터베이스 설정 (환경 변수 우선, 없으면 로컬 기본값)"""
+    # GCP 환경 변수 확인
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_password = os.environ.get('DB_PASSWORD', 'maza_970816')
+    db_port = int(os.environ.get('DB_PORT', '5432'))
+    
+    return {
+        'host': db_host,
+        'database': db_name,
+        'user': db_user,
+        'password': db_password,
+        'port': db_port
+    }
 
 def get_db_connection():
     """데이터베이스 연결 생성"""
@@ -428,26 +242,15 @@ def get_bills():
         cur.execute(count_query, tuple(params_list))
         total = cur.fetchone()['total']
         
-        # proposer_name 컬럼 존재 여부 확인
-        cur.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'bills' AND column_name = 'proposer_name'
-        """)
-        has_proposer_name = cur.fetchone() is not None
-        
         # 의안 목록 조회 (표결 결과 포함)
-        proposer_name_select = ", b.proposer_name" if has_proposer_name else ""
-        proposer_name_groupby = ", b.proposer_name" if has_proposer_name else ""
-        
         query = f"""
             SELECT 
                 b.bill_id,
                 b.bill_no,
                 b.title,
                 b.proposal_date,
-                b.proposer_kind
-                {proposer_name_select},
+                b.proposer_kind,
+                b.proposer_name,
                 b.proc_stage_cd,
                 b.pass_gubn,
                 b.proc_date,
@@ -463,7 +266,7 @@ def get_bills():
             LEFT JOIN votes v ON b.bill_id = v.bill_id
             WHERE {where_clause}
             GROUP BY b.bill_id, b.bill_no, b.title, b.proposal_date, 
-                     b.proposer_kind{proposer_name_groupby}, b.proc_stage_cd, b.pass_gubn, 
+                     b.proposer_kind, b.proposer_name, b.proc_stage_cd, b.pass_gubn, 
                      b.proc_date, b.general_result, b.link_url
             ORDER BY {order_by}
             LIMIT %s OFFSET %s
@@ -476,9 +279,6 @@ def get_bills():
         bills = []
         for row in cur.fetchall():
             bill = dict(row)
-            # proposer_name이 없으면 None으로 설정
-            if 'proposer_name' not in bill:
-                bill['proposer_name'] = None
             # 날짜 형식 변환
             bill['proposal_date'] = format_date_for_json(bill['proposal_date'])
             bill['proc_date'] = format_date_for_json(bill['proc_date'])
@@ -698,108 +498,179 @@ def get_proc_stage_options():
         cur.close()
         conn.close()
 
-@app.route('/erd')
-def erd():
-    """ERD (테이블 관계도) 페이지"""
-    return render_template('erd.html')
+def get_table_korean_info(table_name):
+    """테이블명에 대한 한글명과 설명 반환"""
+    table_info = {
+        'bills': {
+            'name': '의안 정보',
+            'description': '국회에서 제안된 의안의 기본 정보와 진행 상황을 저장하는 테이블입니다.'
+        },
+        'assembly_members': {
+            'name': '국회의원 정보',
+            'description': '국회의원의 기본 정보, 정당, 선거구, 위원회 등 상세 정보를 저장하는 테이블입니다.'
+        },
+        'votes': {
+            'name': '표결 정보',
+            'description': '국회의원들이 의안에 대해 표결한 결과(찬성/반대/기권/불참)를 저장하는 테이블입니다.'
+        },
+        'user_votes': {
+            'name': '사용자 투표',
+            'description': '일반 사용자가 의안에 대해 투표한 결과를 저장하는 테이블입니다. (추후 기능)'
+        },
+        'user_political_profile': {
+            'name': '사용자 정치성향 프로필',
+            'description': '사용자가 정치성향 테스트를 통해 얻은 8개 축의 점수를 저장하는 테이블입니다. (추후 기능)'
+        },
+        'member_political_profile': {
+            'name': '의원 정치성향 프로필',
+            'description': '국회의원의 표결 이력을 기반으로 계산된 정치성향 점수를 저장하는 테이블입니다. (추후 기능)'
+        },
+        'proc_stage_mapping': {
+            'name': '진행 단계 매핑',
+            'description': '의안의 진행 단계 코드(접수, 심사, 본회의, 처리완료 등)를 읽기 쉬운 이름으로 매핑하는 설정 테이블입니다.'
+        },
+        'bill_similarity': {
+            'name': '의안 유사도',
+            'description': '의안 간의 유사도를 계산한 결과를 저장하는 테이블입니다. 유사도 점수(0.0~1.0)로 저장되며, 하나의 계산 방법을 사용합니다. (추후 기능)'
+        },
+    }
+    return table_info.get(table_name, {'name': table_name, 'description': ''})
 
-@app.route('/api/erd')
-def get_erd():
-    """ERD 데이터 조회 (테이블 및 관계 정보)"""
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+def get_column_korean_name(table_name, column_name):
+    """컬럼명에 대한 한글 설명 반환"""
+    column_descriptions = {
+        'bills': {
+            'bill_id': '의안ID',
+            'bill_no': '의안번호',
+            'title': '의안명',
+            'proposal_date': '제안일',
+            'proposer_kind': '제안자구분',
+            'proposer_name': '제안자 이름',
+            'proc_stage_cd': '진행단계 코드',
+            'pass_gubn': '처리구분',
+            'proc_date': '처리일',
+            'general_result': '일반 결과',
+            'summary_raw': '제안이유 및 주요내용 원문',
+            'summary': 'AI 요약 결과',
+            'categories': '카테고리 분류 결과',
+            'vote_for': '찬성 시 정치성향 가중치',
+            'vote_against': '반대 시 정치성향 가중치',
+            'proc_stage_order': '진행 단계 순서',
+            'proposer_count': '제안자 수',
+            'link_url': '의안 원문 링크',
+            'created_at': '생성일시',
+            'updated_at': '수정일시',
+        },
+        'assembly_members': {
+            'member_id': '의원코드',
+            'name': '의원명',
+            'name_chinese': '한자명',
+            'name_english': '영문명',
+            'party': '정당명',
+            'district': '선거구',
+            'district_type': '선거구 구분명',
+            'committee': '소속위원회명',
+            'current_committee': '현재 위원회명',
+            'era': '당선 대수',
+            'election_type': '선거 구분명',
+            'gender': '성별',
+            'birth_date': '생년월일',
+            'birth_type': '생년 구분 코드',
+            'duty_name': '직책명',
+            'phone': '전화번호',
+            'email': '이메일',
+            'homepage_url': '홈페이지 URL',
+            'office_room': '사무실 호수',
+            'aide_name': '보좌관 이름',
+            'secretary_name': '비서 이름',
+            'assistant_name': '조수 이름',
+            'photo_url': '사진 URL',
+            'brief_history': '약력',
+            'mona_cd': '표결정보 API의 MONA_CD',
+            'member_no': '표결정보 API의 MEMBER_NO',
+            'created_at': '생성일시',
+            'updated_at': '수정일시',
+        },
+        'votes': {
+            'vote_id': '표결ID',
+            'bill_id': '의안ID',
+            'bill_no': '의안번호',
+            'bill_name': '의안명',
+            'member_no': '의원번호',
+            'mona_cd': 'MONA 코드',
+            'member_id': '의원코드',
+            'member_name': '의원명',
+            'member_name_chinese': '의원 한자명',
+            'party_name': '정당명',
+            'party_code': '정당 코드',
+            'district_name': '선거구명',
+            'district_code': '선거구 코드',
+            'vote_result': '표결결과',
+            'vote_date': '표결일시',
+            'era': '국회 대수',
+            'session_code': '회기 코드',
+            'current_committee': '현재 위원회',
+            'current_committee_id': '현재 위원회 ID',
+            'currents_code': '회기 코드 (미사용)',
+            'dept_code': '부서 코드 (미사용)',
+            'display_order': '표시 순서 (미사용)',
+            'law_title': '법률 제목 (미사용)',
+            'bill_url': '의안 URL (미사용)',
+            'bill_name_url': '의안명 URL (미사용)',
+            'created_at': '생성일시',
+            'updated_at': '수정일시',
+        },
+        'user_votes': {
+            'user_vote_id': '사용자 투표ID',
+            'bill_id': '의안ID',
+            'user_id': '사용자ID',
+            'vote_result': '투표 결과',
+            'vote_date': '투표일시',
+        },
+        'user_political_profile': {
+            'user_id': '사용자ID',
+            'p_score': '공공 중심 점수',
+            'm_score': '시장 중심 점수',
+            'u_score': '보편 적용 점수',
+            't_score': '대상 맞춤 점수',
+            'n_score': '필요 기반 점수',
+            's_score': '성과 기반 점수',
+            'o_score': '개방 실험 점수',
+            'r_score': '절차 안정 점수',
+            'test_completed': '테스트 완료 여부',
+            'created_at': '생성일시',
+            'updated_at': '수정일시',
+        },
+        'member_political_profile': {
+            'member_id': '의원코드',
+            'p_score': '공공 중심 점수',
+            'm_score': '시장 중심 점수',
+            'u_score': '보편 적용 점수',
+            't_score': '대상 맞춤 점수',
+            'n_score': '필요 기반 점수',
+            's_score': '성과 기반 점수',
+            'o_score': '개방 실험 점수',
+            'r_score': '절차 안정 점수',
+            'total_votes': '총 표결 수',
+            'last_calculated_at': '마지막 계산일시',
+            'created_at': '생성일시',
+            'updated_at': '수정일시',
+        },
+        'proc_stage_mapping': {
+            'stage_code': '진행 단계 코드',
+            'stage_name': '진행 단계 이름',
+            'stage_order': '진행 단계 순서',
+            'description': '설명',
+        },
+        'bill_similarity': {
+            'bill_id_1': '의안ID 1',
+            'bill_id_2': '의안ID 2',
+            'similarity_score': '유사도 점수',
+            'created_at': '생성일시',
+        },
+    }
     
-    try:
-        # 모든 테이블 목록 조회
-        cur.execute("""
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = 'public'
-            AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-        """)
-        
-        table_names = [row['table_name'] for row in cur.fetchall()]
-        
-        tables = []
-        relationships = []
-        
-        for table_name in table_names:
-            # 데이터 개수
-            cur.execute(f"SELECT COUNT(*) as count FROM {table_name}")
-            row_count = cur.fetchone()['count']
-            
-            # 컬럼 정보 (주요 컬럼만)
-            cur.execute("""
-                SELECT 
-                    column_name,
-                    data_type,
-                    character_maximum_length as max_length,
-                    is_nullable
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                AND table_name = %s
-                ORDER BY ordinal_position
-            """, (table_name,))
-            
-            columns = [dict(row) for row in cur.fetchall()]
-            
-            # 외래키 정보
-            cur.execute("""
-                SELECT
-                    tc.constraint_name,
-                    kcu.column_name as from_column,
-                    ccu.table_name AS to_table,
-                    ccu.column_name AS to_column,
-                    rc.delete_rule as on_delete
-                FROM information_schema.table_constraints AS tc
-                JOIN information_schema.key_column_usage AS kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                JOIN information_schema.constraint_column_usage AS ccu
-                    ON ccu.constraint_name = tc.constraint_name
-                    AND ccu.table_schema = tc.table_schema
-                LEFT JOIN information_schema.referential_constraints AS rc
-                    ON rc.constraint_name = tc.constraint_name
-                    AND rc.constraint_schema = tc.table_schema
-                WHERE tc.constraint_type = 'FOREIGN KEY'
-                AND tc.table_schema = 'public'
-                AND tc.table_name = %s
-            """, (table_name,))
-            
-            foreign_keys = cur.fetchall()
-            
-            tables.append({
-                'table_name': table_name,
-                'row_count': row_count,
-                'columns': columns,
-                'foreign_keys': [dict(fk) for fk in foreign_keys]
-            })
-            
-            # 관계 정보 추가
-            for fk in foreign_keys:
-                relationships.append({
-                    'from_table': table_name,
-                    'from_column': fk['from_column'],
-                    'to_table': fk['to_table'],
-                    'to_column': fk['to_column'],
-                    'on_delete': fk['on_delete'] or 'NO ACTION'
-                })
-        
-        return jsonify({
-            'tables': tables,
-            'relationships': relationships
-        })
-    
-    except Exception as e:
-        print(f"ERD 데이터 조회 오류: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cur.close()
-        conn.close()
+    return column_descriptions.get(table_name, {}).get(column_name, '')
 
 @app.route('/db-structure')
 def db_structure():
@@ -850,7 +721,11 @@ def db_structure():
                 ORDER BY ordinal_position
             """, (table_name,))
             
-            columns = [dict(row) for row in cur.fetchall()]
+            columns = []
+            for row in cur.fetchall():
+                col = dict(row)
+                col['korean_name'] = get_column_korean_name(table_name, col['column_name'])
+                columns.append(col)
             
             # 인덱스 정보
             cur.execute("""
@@ -886,8 +761,13 @@ def db_structure():
             
             foreign_keys = [dict(row) for row in cur.fetchall()]
             
+            # 테이블 한글 정보 추가
+            table_korean_info = get_table_korean_info(table_name)
+            
             tables.append({
                 'table_name': table_name,
+                'korean_name': table_korean_info['name'],
+                'description': table_korean_info['description'],
                 'row_count': row_count,
                 'columns': columns,
                 'indexes': indexes,
@@ -913,23 +793,14 @@ def db_structure():
         cur.close()
         conn.close()
 
-# 앱 시작 시 데이터베이스 초기화
-init_database_if_needed()
-
 if __name__ == '__main__':
-    # 프로덕션 환경에서는 PORT 환경 변수 사용 (Render, Railway 등)
-    port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') != 'production'
-    
     print("=" * 60)
     print("2025년 의안 표결 결과 웹 대시보드 시작")
     print("=" * 60)
-    print(f"서버 주소: http://0.0.0.0:{port}")
-    print(f"의안 대시보드: http://localhost:{port}")
-    print(f"DB 구조 페이지: http://localhost:{port}/db-structure")
-    print(f"ERD 페이지: http://localhost:{port}/erd")
+    print("서버 주소: http://0.0.0.0:5000")
+    print("의안 대시보드: http://localhost:5000")
+    print("DB 구조 페이지: http://localhost:5000/db-structure")
     print("=" * 60)
     
-    # 프로덕션 환경에서는 gunicorn 사용 권장, 개발 환경에서는 Flask 개발 서버 사용
-    app.run(debug=debug, host='0.0.0.0', port=port, threaded=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
 
