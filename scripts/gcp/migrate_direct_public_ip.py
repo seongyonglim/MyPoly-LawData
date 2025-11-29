@@ -43,7 +43,13 @@ def get_table_columns(cur, table_name):
         WHERE table_name = %s AND table_schema = 'public'
         ORDER BY ordinal_position;
     """, (table_name,))
-    return {row[0]: row[1] for row in cur.fetchall()}
+    rows = cur.fetchall()
+    # RealDictCursor를 사용하므로 딕셔너리로 접근
+    if rows and isinstance(rows[0], dict):
+        return {row['column_name']: row['data_type'] for row in rows}
+    else:
+        # 일반 cursor인 경우 튜플로 접근
+        return {row[0]: row[1] for row in rows}
 
 def migrate_table(local_cur, cloud_cur, cloud_conn, table_name):
     """테이블 데이터 마이그레이션"""

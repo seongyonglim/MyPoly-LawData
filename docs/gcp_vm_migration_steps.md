@@ -145,3 +145,4 @@ python scripts/gcp/migrate_direct_python.py
 1. Cloud SQL Proxy가 실행 중인지 확인
 2. VM의 .env 파일에 DB 비밀번호가 올바른지 확인
 
+
