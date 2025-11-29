@@ -36,6 +36,10 @@ Thumbs.db
 *.sql
 *.db
 
+# CSV files (generated during migration attempts)
+*.csv
+!AI/crawl/*.csv
+
 # GCP
 .gcloud/
 *.json

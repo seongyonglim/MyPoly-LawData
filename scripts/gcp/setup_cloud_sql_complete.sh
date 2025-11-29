@@ -18,10 +18,10 @@ chmod +x scripts/gcp/create_tables_in_cloud_sql.sh
 echo ""
 echo "[2/2] 데이터 마이그레이션"
 echo "로컬 데이터를 Cloud SQL로 마이그레이션하려면:"
-echo "1. 로컬 PC에서 pg_dump 실행"
-echo "2. GCP 콘솔 → Cloud SQL → 가져오기"
+echo "로컬 PC에서 다음 스크립트 실행:"
+echo "  python scripts/gcp/migrate_direct_public_ip.py"
 echo ""
-echo "또는 scripts/gcp/migrate_data_to_cloud_sql.py 사용"
+echo "자세한 내용은 docs/gcp_migration_summary.md 참고"
 
 echo ""
 echo "=========================================="
