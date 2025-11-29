@@ -2,24 +2,22 @@
 
 2025년 의안 표결 결과 웹 대시보드
 
-## 📋 프로젝트 소개
+## 프로젝트 소개
 
 국회의원 표결 정보를 시각화하고 분석하는 웹 애플리케이션입니다.
 
-## 🚀 주요 기능
+## 주요 기능
 
 - **의안 대시보드**: 2025년 의안 표결 결과를 한눈에 확인
 - **테이블 구조 확인**: 데이터베이스 테이블 구조 및 통계 정보
-- **ERD 시각화**: 테이블 간 관계를 시각적으로 확인
 
-## 🛠️ 기술 스택
+## 기술 스택
 
 - **Backend**: Flask (Python)
 - **Database**: PostgreSQL
 - **Frontend**: HTML, CSS, JavaScript
-- **Visualization**: Mermaid.js (ERD)
 
-## 📦 설치 및 실행
+## 설치 및 실행
 
 ### 필수 요구사항
 
@@ -58,7 +56,7 @@ python app.py
 
 서버가 시작되면 http://localhost:5000 에서 접속할 수 있습니다.
 
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 MyPoly-LawData/
@@ -71,12 +69,12 @@ MyPoly-LawData/
 └── docs/                 # 문서
 ```
 
-## 🌐 배포
+## 배포
 
-Render.com 또는 Railway.app을 사용하여 배포할 수 있습니다.
+GCP (Google Cloud Platform)를 사용하여 배포할 수 있습니다.
 
-자세한 배포 가이드는 `docs/deployment_guide.md`를 참고하세요.
+자세한 배포 가이드는 `docs/gcp_migration_summary.md`를 참고하세요.
 
-## 📝 라이선스
+## 라이선스
 
 이 프로젝트는 개인 프로젝트입니다.

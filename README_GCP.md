@@ -1,11 +1,11 @@
 # GCP 배포 가이드
 
-## 🎯 목표
+## 목표
 로컬에서 데이터 정제 → GitHub 푸시 → GCP 자동 배포
 
 ---
 
-## 📋 사전 준비
+## 사전 준비
 
 ### 1. GCP 계정 설정
 1. https://console.cloud.google.com 접속
@@ -19,7 +19,7 @@
 
 ---
 
-## 🚀 빠른 시작
+## 빠른 시작
 
 ### 1단계: GCP 프로젝트 생성
 ```bash
@@ -89,7 +89,7 @@ python scripts/gcp/migrate_data_to_cloud_sql.py
 
 ---
 
-## 🔄 개발 워크플로우
+## 개발 워크플로우
 
 ### 로컬에서 개발
 ```bash
@@ -126,7 +126,7 @@ sudo journalctl -u mypoly-app -f
 
 ---
 
-## 📝 환경 변수 설정
+## 환경 변수 설정
 
 ### 로컬 (.env)
 ```
@@ -148,7 +148,7 @@ DB_PORT=5432
 
 ---
 
-## 🔧 문제 해결
+## 문제 해결
 
 ### Cloud SQL 연결 실패
 ```bash
@@ -174,7 +174,7 @@ sudo journalctl -u mypoly-app -n 50
 
 ---
 
-## 📚 참고 문서
+## 참고 문서
 
 - [GCP 설정 가이드](docs/gcp_setup_guide.md)
 - [배포 워크플로우](docs/gcp_deployment_workflow.md)

@@ -1,6 +1,6 @@
 # GCP 마이그레이션 스크립트 가이드
 
-## ✅ 최종 사용 스크립트
+## 최종 사용 스크립트
 
 ### `migrate_direct_public_ip.py`
 **로컬 PC에서 실행**: Cloud SQL 공개 IP를 직접 사용하여 데이터 마이그레이션
@@ -20,7 +20,7 @@ python scripts/gcp/migrate_direct_public_ip.py
 
 ---
 
-## ❌ 사용하지 않는 스크립트들
+## 사용하지 않는 스크립트들
 
 다음 스크립트들은 시도했지만 실패했거나 사용하지 않는 방법들입니다:
 
@@ -37,7 +37,7 @@ python scripts/gcp/migrate_direct_public_ip.py
 
 ---
 
-## 📝 참고
+## 참고
 
 자세한 마이그레이션 과정은 `docs/gcp_migration_summary.md`를 참고하세요.
 
