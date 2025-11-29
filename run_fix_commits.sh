@@ -14,8 +14,8 @@ if [ ! -f "msg_filter.sh" ]; then
     exit 1
 fi
 
-# Check for uncommitted changes
-if [ -n "$(git status --porcelain)" ]; then
+# Check for uncommitted changes (ignore untracked files)
+if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
     echo "Warning: You have uncommitted changes."
     echo "Please commit or stash them before proceeding."
     exit 1
