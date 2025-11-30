@@ -9,11 +9,52 @@
 <body>
     <div class="container">
         <!-- 네비게이션 -->
-        <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-            <a href="/db-structure" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: transform 0.2s;">
-                📋 테이블 구조 보기
-            </a>
+        <div class="nav-links" style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="/" class="nav-link">📊 의안 대시보드</a>
+            <a href="/bills/quality" class="nav-link">📋 의안 데이터 품질</a>
+            <a href="/members/quality" class="nav-link">👥 의원 데이터 품질</a>
+            <a href="/db-structure" class="nav-link">🗄️ 테이블 구조</a>
         </div>
+        <style>
+            .nav-links {
+                margin-bottom: 20px;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .nav-link {
+                display: inline-block;
+                padding: 10px 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                transition: transform 0.2s, opacity 0.2s;
+            }
+            .nav-link:hover {
+                transform: translateY(-2px);
+                opacity: 0.9;
+            }
+            .nav-link.active {
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            }
+        </style>
+        <script>
+            // 현재 페이지에 맞게 active 클래스 설정
+            document.addEventListener('DOMContentLoaded', function() {
+                const currentPath = window.location.pathname;
+                const navLinks = document.querySelectorAll('.nav-link');
+                navLinks.forEach(link => {
+                    const linkPath = new URL(link.href).pathname;
+                    if (linkPath === currentPath || (currentPath === '/' && linkPath === '/')) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
+            });
+        </script>
         
         <!-- 헤더 -->
         <header class="header">

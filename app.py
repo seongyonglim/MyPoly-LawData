@@ -793,6 +793,464 @@ def db_structure():
         cur.close()
         conn.close()
 
+@app.route('/members/quality')
+def members_quality_dashboard():
+    """의원 정보 데이터 품질 대시보드"""
+    return render_template('members_quality.html')
+
+@app.route('/api/members/quality/stats')
+def get_members_quality_stats():
+    """의원 정보 데이터 품질 통계"""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        # 전체 의원 수
+        cur.execute("SELECT COUNT(*) as total FROM assembly_members")
+        total = cur.fetchone()['total']
+        
+        # 필드별 NULL 비율 계산
+        fields = [
+            ('name', '의원명'),
+            ('name_chinese', '한자명'),
+            ('name_english', '영문명'),
+            ('party', '정당명'),
+            ('district', '선거구'),
+            ('district_type', '선거구 구분'),
+            ('committee', '소속위원회'),
+            ('current_committee', '현재위원회'),
+            ('era', '당선 대수'),
+            ('election_type', '선거 구분'),
+            ('gender', '성별'),
+            ('birth_date', '생년월일'),
+            ('birth_type', '생년 구분'),
+            ('duty_name', '직책명'),
+            ('phone', '전화번호'),
+            ('email', '이메일'),
+            ('homepage_url', '홈페이지'),
+            ('office_room', '사무실 호수'),
+            ('aide_name', '보좌관'),
+            ('secretary_name', '비서'),
+            ('assistant_name', '조수'),
+            ('photo_url', '사진 URL'),
+            ('brief_history', '약력'),
+            ('mona_cd', 'MONA 코드'),
+            ('member_no', '의원번호'),
+        ]
+        
+        field_stats = []
+        for field, label in fields:
+            cur.execute(f"""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT({field}) as filled,
+                    COUNT(*) - COUNT({field}) as missing
+                FROM assembly_members
+            """)
+            result = cur.fetchone()
+            filled = result['filled']
+            missing = result['missing']
+            completion_rate = (filled / total * 100) if total > 0 else 0
+            
+            field_stats.append({
+                'field': field,
+                'label': label,
+                'total': total,
+                'filled': filled,
+                'missing': missing,
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        # 의원별 데이터 완성도
+        cur.execute("""
+            SELECT 
+                member_id,
+                name,
+                party,
+                district,
+                (
+                    CASE WHEN name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN name_chinese IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN name_english IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN party IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN district IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN district_type IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN committee IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN current_committee IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN era IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN election_type IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN gender IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN birth_date IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN birth_type IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN duty_name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN phone IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN email IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN homepage_url IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN office_room IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN aide_name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN secretary_name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN assistant_name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN photo_url IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN brief_history IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN mona_cd IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN member_no IS NOT NULL THEN 1 ELSE 0 END
+                ) as filled_fields,
+                25 as total_fields
+            FROM assembly_members
+            ORDER BY filled_fields ASC, name ASC
+        """)
+        
+        members = []
+        for row in cur.fetchall():
+            completion_rate = (row['filled_fields'] / row['total_fields'] * 100) if row['total_fields'] > 0 else 0
+            members.append({
+                'member_id': row['member_id'],
+                'name': row['name'],
+                'party': row['party'],
+                'district': row['district'],
+                'filled_fields': row['filled_fields'],
+                'total_fields': row['total_fields'],
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        return jsonify({
+            'total_members': total,
+            'field_stats': field_stats,
+            'members': members
+        })
+    
+    except Exception as e:
+        print(f"의원 품질 통계 조회 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/bills/quality')
+def bills_quality_dashboard():
+    """의안 정보 데이터 품질 대시보드"""
+    return render_template('bills_quality.html')
+
+@app.route('/api/bills/quality/stats')
+def get_bills_quality_stats():
+    """의안 정보 데이터 품질 통계"""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        # 전체 의안 수
+        cur.execute("SELECT COUNT(*) as total FROM bills WHERE proposal_date >= '2025-01-01'")
+        total = cur.fetchone()['total']
+        
+        # 필드별 NULL 비율 계산
+        fields = [
+            ('bill_id', '의안ID'),
+            ('bill_no', '의안번호'),
+            ('title', '의안명'),
+            ('proposal_date', '제안일'),
+            ('proposer_kind', '제안자구분'),
+            ('proposer_name', '제안자명'),
+            ('proc_stage_cd', '진행단계'),
+            ('pass_gubn', '처리구분'),
+            ('proc_date', '처리일'),
+            ('general_result', '일반결과'),
+            ('summary_raw', '원문내용'),
+            ('summary', 'AI 요약'),
+            ('categories', '카테고리'),
+            ('vote_for', '찬성 가중치'),
+            ('vote_against', '반대 가중치'),
+            ('proc_stage_order', '진행단계 순서'),
+            ('proposer_count', '제안자 수'),
+            ('link_url', '링크 URL'),
+        ]
+        
+        field_stats = []
+        for field, label in fields:
+            cur.execute(f"""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT({field}) as filled,
+                    COUNT(*) - COUNT({field}) as missing
+                FROM bills
+                WHERE proposal_date >= '2025-01-01'
+            """)
+            result = cur.fetchone()
+            filled = result['filled']
+            missing = result['missing']
+            completion_rate = (filled / total * 100) if total > 0 else 0
+            
+            field_stats.append({
+                'field': field,
+                'label': label,
+                'total': total,
+                'filled': filled,
+                'missing': missing,
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        # 의안별 데이터 완성도
+        cur.execute("""
+            SELECT 
+                bill_id,
+                bill_no,
+                title,
+                proposer_kind,
+                pass_gubn,
+                proc_stage_cd,
+                (
+                    CASE WHEN bill_id IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN bill_no IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN title IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proposal_date IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proposer_kind IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proposer_name IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proc_stage_cd IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN pass_gubn IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proc_date IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN general_result IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN summary_raw IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN categories IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN vote_for IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN vote_against IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proc_stage_order IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN proposer_count IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN link_url IS NOT NULL THEN 1 ELSE 0 END
+                ) as filled_fields,
+                18 as total_fields
+            FROM bills
+            WHERE proposal_date >= '2025-01-01'
+            ORDER BY filled_fields ASC, proposal_date DESC
+        """)
+        
+        bills = []
+        for row in cur.fetchall():
+            completion_rate = (row['filled_fields'] / row['total_fields'] * 100) if row['total_fields'] > 0 else 0
+            bills.append({
+                'bill_id': row['bill_id'],
+                'bill_no': row['bill_no'],
+                'title': row['title'],
+                'proposer_kind': row['proposer_kind'],
+                'pass_gubn': row['pass_gubn'],
+                'proc_stage_cd': row['proc_stage_cd'],
+                'filled_fields': row['filled_fields'],
+                'total_fields': row['total_fields'],
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        # 표결 결과 연결 통계
+        cur.execute("""
+            SELECT 
+                COUNT(DISTINCT b.bill_id) as bills_with_votes,
+                COUNT(DISTINCT b.bill_id) FILTER (WHERE v.bill_id IS NULL) as bills_without_votes
+            FROM bills b
+            LEFT JOIN votes v ON b.bill_id = v.bill_id
+            WHERE b.proposal_date >= '2025-01-01'
+        """)
+        vote_stats = cur.fetchone()
+        
+        return jsonify({
+            'total_bills': total,
+            'field_stats': field_stats,
+            'bills': bills,
+            'vote_stats': {
+                'bills_with_votes': vote_stats['bills_with_votes'],
+                'bills_without_votes': vote_stats['bills_without_votes']
+            }
+        })
+    
+    except Exception as e:
+        print(f"의안 품질 통계 조회 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/bills/quality/detail/<bill_id>')
+def get_bill_quality_detail(bill_id):
+    """특정 의안의 데이터 상세 정보"""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cur.execute("""
+            SELECT 
+                bill_id, bill_no, title, proposal_date,
+                proposer_kind, proposer_name,
+                proc_stage_cd, pass_gubn, proc_date,
+                general_result, summary_raw, summary,
+                categories, vote_for, vote_against,
+                proc_stage_order, proposer_count, link_url
+            FROM bills
+            WHERE bill_id = %s
+        """, (bill_id,))
+        
+        bill = cur.fetchone()
+        if not bill:
+            return jsonify({'error': 'Bill not found'}), 404
+        
+        # 필드별 상태 확인
+        fields = {
+            '기본 정보': [
+                ('bill_id', '의안ID'),
+                ('bill_no', '의안번호'),
+                ('title', '의안명'),
+                ('proposal_date', '제안일'),
+            ],
+            '제안자 정보': [
+                ('proposer_kind', '제안자구분'),
+                ('proposer_name', '제안자명'),
+                ('proposer_count', '제안자 수'),
+            ],
+            '진행 정보': [
+                ('proc_stage_cd', '진행단계'),
+                ('proc_stage_order', '진행단계 순서'),
+                ('pass_gubn', '처리구분'),
+                ('proc_date', '처리일'),
+                ('general_result', '일반결과'),
+            ],
+            '내용 정보': [
+                ('summary_raw', '원문내용'),
+                ('summary', 'AI 요약'),
+                ('categories', '카테고리'),
+            ],
+            '정치성향 가중치': [
+                ('vote_for', '찬성 가중치'),
+                ('vote_against', '반대 가중치'),
+            ],
+            '기타': [
+                ('link_url', '링크 URL'),
+            ]
+        }
+        
+        field_details = {}
+        for category, field_list in fields.items():
+            field_details[category] = []
+            for field, label in field_list:
+                value = bill[field]
+                has_value = False
+                if value is not None:
+                    if isinstance(value, (dict, list)):
+                        has_value = len(value) > 0
+                    else:
+                        has_value = str(value).strip() != ''
+                
+                field_details[category].append({
+                    'field': field,
+                    'label': label,
+                    'value': value,
+                    'has_value': has_value
+                })
+        
+        return jsonify({
+            'bill': dict(bill),
+            'field_details': field_details
+        })
+    
+    except Exception as e:
+        print(f"의안 상세 정보 조회 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/members/quality/detail/<member_id>')
+def get_member_quality_detail(member_id):
+    """특정 의원의 데이터 상세 정보"""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cur.execute("""
+            SELECT 
+                member_id, name, name_chinese, name_english,
+                party, district, district_type,
+                committee, current_committee,
+                era, election_type,
+                gender, birth_date, birth_type,
+                duty_name, phone, email, homepage_url, office_room,
+                aide_name, secretary_name, assistant_name,
+                photo_url, brief_history,
+                mona_cd, member_no
+            FROM assembly_members
+            WHERE member_id = %s
+        """, (member_id,))
+        
+        member = cur.fetchone()
+        if not member:
+            return jsonify({'error': 'Member not found'}), 404
+        
+        # 필드별 상태 확인
+        fields = {
+            '기본 정보': [
+                ('name', '의원명'),
+                ('name_chinese', '한자명'),
+                ('name_english', '영문명'),
+            ],
+            '정당/선거 정보': [
+                ('party', '정당명'),
+                ('district', '선거구'),
+                ('district_type', '선거구 구분'),
+                ('era', '당선 대수'),
+                ('election_type', '선거 구분'),
+            ],
+            '위원회 정보': [
+                ('committee', '소속위원회'),
+                ('current_committee', '현재위원회'),
+            ],
+            '개인 정보': [
+                ('gender', '성별'),
+                ('birth_date', '생년월일'),
+                ('birth_type', '생년 구분'),
+                ('duty_name', '직책명'),
+            ],
+            '연락처 정보': [
+                ('phone', '전화번호'),
+                ('email', '이메일'),
+                ('homepage_url', '홈페이지'),
+                ('office_room', '사무실 호수'),
+            ],
+            '보좌진 정보': [
+                ('aide_name', '보좌관'),
+                ('secretary_name', '비서'),
+                ('assistant_name', '조수'),
+            ],
+            '기타 정보': [
+                ('photo_url', '사진 URL'),
+                ('brief_history', '약력'),
+                ('mona_cd', 'MONA 코드'),
+                ('member_no', '의원번호'),
+            ]
+        }
+        
+        field_details = {}
+        for category, field_list in fields.items():
+            field_details[category] = []
+            for field, label in field_list:
+                value = member[field]
+                field_details[category].append({
+                    'field': field,
+                    'label': label,
+                    'value': value,
+                    'has_value': value is not None and str(value).strip() != ''
+                })
+        
+        return jsonify({
+            'member': dict(member),
+            'field_details': field_details
+        })
+    
+    except Exception as e:
+        print(f"의원 상세 정보 조회 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        cur.close()
+        conn.close()
+
 if __name__ == '__main__':
     print("=" * 60)
     print("2025년 의안 표결 결과 웹 대시보드 시작")
@@ -800,6 +1258,8 @@ if __name__ == '__main__':
     print("서버 주소: http://0.0.0.0:5000")
     print("의안 대시보드: http://localhost:5000")
     print("DB 구조 페이지: http://localhost:5000/db-structure")
+    print("의원 품질 대시보드: http://localhost:5000/members/quality")
+    print("의안 품질 대시보드: http://localhost:5000/bills/quality")
     print("=" * 60)
     
     app.run(debug=True, host='0.0.0.0', port=5000)

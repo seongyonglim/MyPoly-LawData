@@ -121,19 +121,44 @@ def collect_22nd_members_complete():
                 if not member_id:
                     continue
                 
+                # 기본 정보
                 name = item.findtext("NAAS_NM", "").strip()
-                party = item.findtext("PLPT_NM", "").strip()
-                district = item.findtext("ELECD_NM", "").strip()
-                committee = item.findtext("BLNG_CMIT_NM", "").strip()
-                era = item.findtext("GTELT_ERACO", "").strip()
-                gender = item.findtext("NTR_DIV", "").strip()
-                birth_date = parse_date(item.findtext("BTH_DT", ""))
-                photo_url = item.findtext("PHOTO_URL", "").strip()
-                phone = item.findtext("TEL_NO", "").strip()
-                email = item.findtext("E_MAIL", "").strip()
-                homepage_url = item.findtext("HOMEPAGE_URL", "").strip()
-                aide_name = item.findtext("AIDE_NM", "").strip()
-                secretary_name = item.findtext("SECRETARY_NM", "").strip()
+                name_chinese = item.findtext("NAAS_CH_NM", "").strip() or None
+                name_english = item.findtext("NAAS_EN_NM", "").strip() or None
+                
+                # 정당 및 선거 정보
+                party = item.findtext("PLPT_NM", "").strip() or None
+                district = item.findtext("ELECD_NM", "").strip() or None
+                district_type = item.findtext("ELECD_DIV_NM", "").strip() or None
+                
+                # 위원회 정보
+                committee = item.findtext("BLNG_CMIT_NM", "").strip() or None
+                current_committee = item.findtext("CMIT_NM", "").strip() or None
+                
+                # 경력 정보
+                era = item.findtext("GTELT_ERACO", "").strip() or None
+                election_type = item.findtext("RLCT_DIV_NM", "").strip() or None
+                
+                # 개인 정보
+                gender = item.findtext("NTR_DIV", "").strip() or None
+                birth_date = parse_date(item.findtext("BIRDY_DT", ""))
+                birth_type = item.findtext("BIRDY_DIV_CD", "").strip() or None
+                duty_name = item.findtext("DTY_NM", "").strip() or None
+                
+                # 연락처 정보
+                phone = item.findtext("NAAS_TEL_NO", "").strip() or None
+                email = item.findtext("NAAS_EMAIL_ADDR", "").strip() or None
+                homepage_url = item.findtext("NAAS_HP_URL", "").strip() or None
+                office_room = item.findtext("OFFM_RNUM_NO", "").strip() or None
+                
+                # 보좌진 정보
+                aide_name = item.findtext("AIDE_NM", "").strip() or None
+                secretary_name = item.findtext("CHF_SCRT_NM", "").strip() or None
+                assistant_name = item.findtext("SCRT_NM", "").strip() or None
+                
+                # 기타 정보
+                photo_url = item.findtext("NAAS_PIC", "").strip() or None
+                brief_history = item.findtext("BRF_HST", "").strip() or None
                 
                 # 22대가 아닌 경우 건너뛰기
                 if era and '22대' not in era:
@@ -142,34 +167,61 @@ def collect_22nd_members_complete():
                 try:
                     cur.execute("""
                         INSERT INTO assembly_members (
-                            member_id, name, party, district, committee, era, gender,
-                            birth_date, photo_url, phone, email, homepage_url,
-                            aide_name, secretary_name, created_at, updated_at
+                            member_id, name, name_chinese, name_english,
+                            party, district, district_type,
+                            committee, current_committee,
+                            era, election_type,
+                            gender, birth_date, birth_type, duty_name,
+                            phone, email, homepage_url, office_room,
+                            aide_name, secretary_name, assistant_name,
+                            photo_url, brief_history,
+                            created_at, updated_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s,
-                            %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                            %s, %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s, %s, %s,
+                            %s, %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         ON CONFLICT (member_id) 
                         DO UPDATE SET
                             name = EXCLUDED.name,
+                            name_chinese = EXCLUDED.name_chinese,
+                            name_english = EXCLUDED.name_english,
                             party = EXCLUDED.party,
                             district = EXCLUDED.district,
+                            district_type = EXCLUDED.district_type,
                             committee = EXCLUDED.committee,
+                            current_committee = EXCLUDED.current_committee,
                             era = EXCLUDED.era,
+                            election_type = EXCLUDED.election_type,
                             gender = EXCLUDED.gender,
                             birth_date = EXCLUDED.birth_date,
-                            photo_url = EXCLUDED.photo_url,
+                            birth_type = EXCLUDED.birth_type,
+                            duty_name = EXCLUDED.duty_name,
                             phone = EXCLUDED.phone,
                             email = EXCLUDED.email,
                             homepage_url = EXCLUDED.homepage_url,
+                            office_room = EXCLUDED.office_room,
                             aide_name = EXCLUDED.aide_name,
                             secretary_name = EXCLUDED.secretary_name,
+                            assistant_name = EXCLUDED.assistant_name,
+                            photo_url = EXCLUDED.photo_url,
+                            brief_history = EXCLUDED.brief_history,
                             updated_at = CURRENT_TIMESTAMP
                     """, (
-                        member_id, name, party, district, committee, era, gender,
-                        birth_date, photo_url, phone, email, homepage_url,
-                        aide_name, secretary_name
+                        member_id, name, name_chinese, name_english,
+                        party, district, district_type,
+                        committee, current_committee,
+                        era, election_type,
+                        gender, birth_date, birth_type, duty_name,
+                        phone, email, homepage_url, office_room,
+                        aide_name, secretary_name, assistant_name,
+                        photo_url, brief_history
                     ))
                     
                     if cur.rowcount > 0:

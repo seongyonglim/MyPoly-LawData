@@ -204,9 +204,53 @@
 </head>
 <body>
     <div class="db-structure-container">
-        <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-            <a href="/" class="back-link">← 의안 대시보드로 돌아가기</a>
+        <!-- 네비게이션 -->
+        <div class="nav-links" style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="/" class="nav-link">📊 의안 대시보드</a>
+            <a href="/bills/quality" class="nav-link">📋 의안 데이터 품질</a>
+            <a href="/members/quality" class="nav-link">👥 의원 데이터 품질</a>
+            <a href="/db-structure" class="nav-link">🗄️ 테이블 구조</a>
         </div>
+        <style>
+            .nav-links {
+                margin-bottom: 20px;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .nav-link {
+                display: inline-block;
+                padding: 10px 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                transition: transform 0.2s, opacity 0.2s;
+            }
+            .nav-link:hover {
+                transform: translateY(-2px);
+                opacity: 0.9;
+            }
+            .nav-link.active {
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            }
+        </style>
+        <script>
+            // 현재 페이지에 맞게 active 클래스 설정
+            document.addEventListener('DOMContentLoaded', function() {
+                const currentPath = window.location.pathname;
+                const navLinks = document.querySelectorAll('.nav-link');
+                navLinks.forEach(link => {
+                    const linkPath = new URL(link.href).pathname;
+                    if (linkPath === currentPath) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
+            });
+        </script>
         
         <div class="summary-section">
             <h1 style="margin: 0 0 10px 0; color: #2c3e50;">📊 데이터베이스 테이블 구조</h1>
