@@ -7,8 +7,9 @@ Flask 기반 웹 애플리케이션
 
 import sys
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, jsonify, request
+from flask_caching import Cache
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
@@ -20,6 +21,14 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 app = Flask(__name__)
+
+# 캐시 설정
+cache_config = {
+    'CACHE_TYPE': 'simple',  # 메모리 기반 캐시 (프로덕션에서는 Redis 사용 권장)
+    'CACHE_DEFAULT_TIMEOUT': 300  # 5분 캐시
+}
+app.config.from_mapping(cache_config)
+cache = Cache(app)
 
 
 # 데이터베이스 설정 (로컬/GCP 모두 지원)
@@ -66,6 +75,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/api/stats')
+@cache.cached(timeout=300)  # 5분 캐시
 def get_stats():
     """전체 통계 정보"""
     conn = get_db_connection()
@@ -189,6 +199,7 @@ def get_stats():
         conn.close()
 
 @app.route('/api/bills')
+@cache.cached(timeout=60, query_string=True)  # 1분 캐시, 쿼리 파라미터별로 캐시
 def get_bills():
     """의안 목록 조회 (월별 필터링, 제목 검색, 처리구분, 진행단계 필터 지원)"""
     month = request.args.get('month', None)  # YYYY-MM 형식
@@ -799,6 +810,7 @@ def members_quality_dashboard():
     return render_template('members_quality.html')
 
 @app.route('/api/members/quality/stats')
+@cache.cached(timeout=300)  # 5분 캐시
 def get_members_quality_stats():
     """의원 정보 데이터 품질 통계"""
     conn = get_db_connection()
@@ -933,6 +945,7 @@ def bills_quality_dashboard():
     return render_template('bills_quality.html')
 
 @app.route('/api/bills/quality/stats')
+@cache.cached(timeout=300)  # 5분 캐시
 def get_bills_quality_stats():
     """의안 정보 데이터 품질 통계"""
     conn = get_db_connection()
