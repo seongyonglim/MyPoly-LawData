@@ -5,7 +5,10 @@
 CREATE INDEX IF NOT EXISTS idx_bills_proposal_date ON bills(proposal_date);
 CREATE INDEX IF NOT EXISTS idx_bills_pass_gubn ON bills(pass_gubn);
 CREATE INDEX IF NOT EXISTS idx_bills_proc_stage_cd ON bills(proc_stage_cd);
-CREATE INDEX IF NOT EXISTS idx_bills_title ON bills USING gin(to_tsvector('korean', title));  -- 한국어 전문 검색용
+-- 한국어 전문 검색 인덱스는 PostgreSQL 확장이 필요하므로 제외
+-- 필요시: CREATE EXTENSION IF NOT EXISTS pg_trgm; 후 trigram 인덱스 사용
+-- CREATE INDEX IF NOT EXISTS idx_bills_title_trgm ON bills USING gin(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_bills_title ON bills(title);  -- 일반 인덱스로 대체
 CREATE INDEX IF NOT EXISTS idx_bills_proposal_date_pass_gubn ON bills(proposal_date, pass_gubn);
 
 -- votes 테이블 인덱스
