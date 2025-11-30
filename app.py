@@ -423,6 +423,7 @@ def get_bill_detail(bill_id):
         conn.close()
 
 @app.route('/api/months')
+@cache.cached(timeout=600)  # 10분 캐시 (월별 데이터는 자주 변경되지 않음)
 def get_available_months():
     """사용 가능한 월 목록 조회"""
     conn = get_db_connection()
@@ -452,6 +453,7 @@ def get_available_months():
         conn.close()
 
 @app.route('/api/pass_gubn_options')
+@cache.cached(timeout=600)  # 10분 캐시
 def get_pass_gubn_options():
     """처리구분 옵션 목록 조회"""
     conn = get_db_connection()
@@ -481,6 +483,7 @@ def get_pass_gubn_options():
         conn.close()
 
 @app.route('/api/proc_stage_options')
+@cache.cached(timeout=600)  # 10분 캐시
 def get_proc_stage_options():
     """진행단계 옵션 목록 조회"""
     conn = get_db_connection()
