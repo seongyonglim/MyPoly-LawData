@@ -15,8 +15,25 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
+def load_env_file():
+    """.env 파일에서 환경 변수 로드"""
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and value:
+                        os.environ[key] = value
+
 def get_db_config():
     """환경 변수에서 데이터베이스 설정 가져오기 (app.py와 동일한 방식)"""
+    # .env 파일 로드 시도
+    load_env_file()
+    
     # GCP 환경 변수 확인 (VM에서 Cloud SQL Proxy 사용 시)
     db_host = os.environ.get('DB_HOST', 'localhost')
     db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
