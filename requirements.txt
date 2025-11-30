@@ -1,4 +1,5 @@
 flask==3.0.0
 Flask-Caching==2.1.0
+python-dotenv==1.0.0
 psycopg2-binary==2.9.10
 requests==2.31.0

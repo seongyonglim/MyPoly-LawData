@@ -10,9 +10,13 @@ import os
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_caching import Cache
+from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
+
+# .env 파일 자동 로드
+load_dotenv()
 
 # Windows 환경에서 한글 출력을 위한 인코딩 설정
 if sys.platform == 'win32':
