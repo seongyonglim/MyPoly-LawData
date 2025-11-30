@@ -16,33 +16,21 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 def get_db_config():
-    """환경 변수에서 데이터베이스 설정 가져오기"""
-    if 'DATABASE_URL' in os.environ:
-        from urllib.parse import urlparse
-        db_url = urlparse(os.environ['DATABASE_URL'])
-        return {
-            'host': db_url.hostname,
-            'database': db_url.path[1:],
-            'user': db_url.username,
-            'password': db_url.password,
-            'port': db_url.port or 5432
-        }
-    elif 'DB_HOST' in os.environ:
-        return {
-            'host': os.environ.get('DB_HOST'),
-            'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
-            'user': os.environ.get('DB_USER', 'postgres'),
-            'password': os.environ.get('DB_PASSWORD'),
-            'port': int(os.environ.get('DB_PORT', 5432))
-        }
-    else:
-        return {
-            'host': 'localhost',
-            'database': 'mypoly_lawdata',
-            'user': 'postgres',
-            'password': 'maza_970816',
-            'port': 5432
-        }
+    """환경 변수에서 데이터베이스 설정 가져오기 (app.py와 동일한 방식)"""
+    # GCP 환경 변수 확인 (VM에서 Cloud SQL Proxy 사용 시)
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_password = os.environ.get('DB_PASSWORD', 'maza_970816')
+    db_port = int(os.environ.get('DB_PORT', '5432'))
+    
+    return {
+        'host': db_host,
+        'database': db_name,
+        'user': db_user,
+        'password': db_password,
+        'port': db_port
+    }
 
 def get_db_connection():
     config = get_db_config()
