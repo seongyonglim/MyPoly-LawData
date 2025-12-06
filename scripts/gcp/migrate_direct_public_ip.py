@@ -10,6 +10,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, execute_batch
 import os
 from datetime import datetime
+import socket
 
 if sys.platform == 'win32':
     import io
@@ -17,18 +18,31 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import os
-from dotenv import load_dotenv
 import sys
 
 # Windows에서 .env 파일 인코딩 문제 해결
+# dotenv 대신 직접 파일 읽기
 if sys.platform == 'win32':
-    # UTF-8로 .env 파일 읽기 시도
-    try:
-        load_dotenv(encoding='utf-8')
-    except:
-        # UTF-8 실패 시 기본 인코딩 시도
-        load_dotenv()
+    env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+    if os.path.exists(env_file):
+        # 여러 인코딩 시도
+        encodings = ['utf-8', 'utf-8-sig', 'cp949', 'latin-1']
+        for encoding in encodings:
+            try:
+                with open(env_file, 'r', encoding=encoding) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            key = key.strip()
+                            value = value.strip().strip('"').strip("'")
+                            if key and value:
+                                os.environ[key] = value
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
 else:
+    from dotenv import load_dotenv
     load_dotenv()
 
 # 로컬 DB 설정
@@ -190,27 +204,67 @@ def main():
     print("3. 공개 IP 확인: https://www.whatismyip.com/")
     print("=" * 80)
     
-    # 로컬 DB 연결
+    # 로컬 DB 연결 (타임아웃 10초)
     print(f"\n[1] 로컬 DB 연결 중... (localhost:5432)")
+    print("   연결 확인 중...", end='', flush=True)
     try:
-        local_conn = psycopg2.connect(**LOCAL_DB)
+        # 포트 연결 확인
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex((LOCAL_DB['host'], LOCAL_DB['port']))
+        sock.close()
+        if result != 0:
+            print(f"\n❌ 로컬 DB 포트 연결 실패 (포트 {LOCAL_DB['port']}가 열려있지 않음)")
+            print("   PostgreSQL이 실행 중인지 확인하세요.")
+            return
+        print(" ✓", flush=True)
+        
+        # 실제 DB 연결
+        local_conn = psycopg2.connect(**LOCAL_DB, connect_timeout=10)
         local_cur = local_conn.cursor(cursor_factory=RealDictCursor)
         print("✅ 로컬 DB 연결 성공")
+    except psycopg2.OperationalError as e:
+        print(f"\n❌ 로컬 DB 연결 실패: {e}")
+        print("   - PostgreSQL이 실행 중인지 확인")
+        print("   - 비밀번호가 올바른지 확인")
+        return
     except Exception as e:
-        print(f"❌ 로컬 DB 연결 실패: {e}")
+        print(f"\n❌ 로컬 DB 연결 실패: {e}")
         return
     
-    # Cloud SQL 연결 (공개 IP 직접)
-    print("\n[2] Cloud SQL 연결 중... (34.50.48.31:5432)")
+    # Cloud SQL 연결 (타임아웃 10초)
+    cloud_host = CLOUD_DB.get('host', '')
+    cloud_port = CLOUD_DB.get('port', 5432)
+    print(f"\n[2] Cloud SQL 연결 중... ({cloud_host}:{cloud_port})")
+    print("   연결 확인 중...", end='', flush=True)
     try:
-        cloud_conn = psycopg2.connect(**CLOUD_DB)
+        # 포트 연결 확인
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10)
+        result = sock.connect_ex((cloud_host, cloud_port))
+        sock.close()
+        if result != 0:
+            print(f"\n❌ Cloud SQL 포트 연결 실패")
+            print("   - GCP 방화벽 규칙 확인 필요")
+            print("   - 공개 IP가 '승인된 네트워크'에 추가되었는지 확인")
+            local_conn.close()
+            return
+        print(" ✓", flush=True)
+        
+        # 실제 DB 연결
+        cloud_conn = psycopg2.connect(**CLOUD_DB, connect_timeout=10)
         cloud_cur = cloud_conn.cursor(cursor_factory=RealDictCursor)
         print("✅ Cloud SQL 연결 성공")
-    except Exception as e:
-        print(f"❌ Cloud SQL 연결 실패: {e}")
+    except psycopg2.OperationalError as e:
+        print(f"\n❌ Cloud SQL 연결 실패: {e}")
         print("\n💡 GCP 콘솔에서 방화벽 규칙 확인:")
         print("   Cloud SQL → 인스턴스 → 연결 → 승인된 네트워크")
-        print("   로컬 PC의 공개 IP (61.74.128.66) 추가 필요")
+        print("   로컬 PC의 공개 IP 추가 필요")
+        print("   공개 IP 확인: https://www.whatismyip.com/")
+        local_conn.close()
+        return
+    except Exception as e:
+        print(f"\n❌ Cloud SQL 연결 실패: {e}")
         local_conn.close()
         return
     
