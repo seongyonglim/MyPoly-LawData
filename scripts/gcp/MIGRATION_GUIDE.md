@@ -4,7 +4,71 @@
 
 로컬 PC의 PostgreSQL 데이터를 GCP Cloud SQL로 마이그레이션하는 방법입니다.
 
-## 🔧 사전 준비
+## 🔧 방법 1: pg_dump + psql (쉘 명령어) - 권장
+
+### 1. GCP 방화벽 규칙 설정
+
+1. **GCP 콘솔** → **Cloud SQL** → 인스턴스 `mypoly-postgres` 클릭
+2. **"연결"** 탭 클릭
+3. **"승인된 네트워크"** 섹션에서 **"네트워크 추가"** 클릭
+4. 다음 정보 입력:
+   - **이름**: `로컬PC` (또는 원하는 이름)
+   - **네트워크**: `YOUR_PUBLIC_IP/32` (로컬 PC의 공개 IP)
+     - 공개 IP 확인: https://www.whatismyip.com/
+5. **"저장"** 클릭
+
+### 2. 로컬 DB 덤프 생성
+
+**Windows PowerShell:**
+
+```powershell
+# 프로젝트 디렉토리로 이동
+cd C:\polywave\MyPoly-LawData
+
+# 덤프 파일 생성 (데이터만, 스키마 제외)
+pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
+
+# 또는 전체 덤프 (스키마 + 데이터)
+pg_dump -h localhost -U postgres -d mypoly_lawdata --no-owner --no-privileges > local_data_full.sql
+```
+
+**Linux/Mac:**
+
+```bash
+cd ~/MyPoly-LawData
+
+# 덤프 파일 생성
+pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
+```
+
+### 3. Cloud SQL에 테이블 스키마 생성 (필요한 경우)
+
+```powershell
+# Cloud SQL 공개 IP로 직접 연결하여 스키마 생성
+psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f scripts/db/create_tables_postgresql.sql
+```
+
+### 4. Cloud SQL에 데이터 복원
+
+```powershell
+# 덤프 파일을 Cloud SQL로 복원
+psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f local_data.sql
+```
+
+**전체 명령어 예시:**
+
+```powershell
+# 1. 덤프 생성
+pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
+
+# 2. Cloud SQL에 스키마 생성 (처음 한 번만)
+psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f scripts/db/create_tables_postgresql.sql
+
+# 3. 데이터 복원
+psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f local_data.sql
+```
+
+## 🔧 방법 2: Python 스크립트 사용
 
 ### 1. 환경 변수 설정
 
@@ -26,50 +90,14 @@ CLOUD_DB_PASSWORD=your_cloud_password
 CLOUD_DB_PORT=5432
 ```
 
-### 2. GCP 방화벽 규칙 설정
-
-1. **GCP 콘솔** → **Cloud SQL** → 인스턴스 `mypoly-postgres` 클릭
-2. **"연결"** 탭 클릭
-3. **"승인된 네트워크"** 섹션에서 **"네트워크 추가"** 클릭
-4. 다음 정보 입력:
-   - **이름**: `로컬PC` (또는 원하는 이름)
-   - **네트워크**: `YOUR_PUBLIC_IP/32` (로컬 PC의 공개 IP)
-     - 공개 IP 확인: https://www.whatismyip.com/
-5. **"저장"** 클릭
-
-## 🚀 마이그레이션 실행
-
-### Windows PowerShell
+### 2. 마이그레이션 실행
 
 ```powershell
 # 프로젝트 디렉토리로 이동
 cd C:\polywave\MyPoly-LawData
 
-# 가상환경 활성화 (이미 있다면 생략 가능)
-.venv\Scripts\Activate.ps1
-
-# 또는 새로 만들기
-# python -m venv .venv
-# .venv\Scripts\Activate.ps1
-# pip install psycopg2-binary python-dotenv
-
-# 마이그레이션 실행
-python scripts/gcp/migrate_direct_public_ip.py
-```
-
-### Linux/Mac
-
-```bash
-# 프로젝트 디렉토리로 이동
-cd ~/MyPoly-LawData
-
 # 가상환경 활성화
-source venv/bin/activate
-
-# 또는 새로 만들기
-# python3 -m venv venv
-# source venv/bin/activate
-# pip install psycopg2-binary python-dotenv
+.venv\Scripts\Activate.ps1
 
 # 마이그레이션 실행
 python scripts/gcp/migrate_direct_public_ip.py
@@ -86,71 +114,69 @@ python scripts/gcp/migrate_direct_public_ip.py
 
 ## ⚠️ 주의사항
 
-- **기존 데이터 삭제**: Cloud SQL의 기존 데이터는 모두 삭제되고 로컬 데이터로 대체됩니다.
-- **외래키 순서**: 테이블은 외래키 의존성을 고려한 순서로 마이그레이션됩니다.
-- **배치 처리**: 대용량 데이터는 1000건씩 배치로 처리됩니다.
-- **에러 처리**: 일부 레코드에서 오류가 발생해도 계속 진행됩니다.
+### pg_dump 옵션 설명
+
+- `--data-only`: 데이터만 덤프 (스키마 제외)
+- `--no-owner`: 소유자 정보 제외 (Cloud SQL 권한 문제 방지)
+- `--no-privileges`: 권한 정보 제외 (Cloud SQL 권한 문제 방지)
+
+### psql 연결 시
+
+- Cloud SQL 공개 IP: GCP 콘솔에서 확인
+- 비밀번호: Cloud SQL 인스턴스 설정에서 확인
+- 연결 실패 시: GCP 방화벽 규칙 확인
 
 ## 🔍 문제 해결
 
 ### 연결 실패
 
-**증상**: `❌ Cloud SQL 연결 실패`
+**증상**: `psql: could not connect to server`
 
 **해결 방법**:
 1. GCP 콘솔에서 방화벽 규칙 확인
 2. 로컬 PC의 공개 IP가 "승인된 네트워크"에 추가되었는지 확인
 3. Cloud SQL 인스턴스가 실행 중인지 확인
-4. `.env` 파일의 `CLOUD_DB_HOST`와 `CLOUD_DB_PASSWORD` 확인
 
-### 로컬 DB 연결 실패
+### 권한 오류
 
-**증상**: `❌ 로컬 DB 연결 실패`
+**증상**: `ERROR: permission denied`
 
 **해결 방법**:
-1. 로컬 PostgreSQL이 실행 중인지 확인
-2. `.env` 파일의 `LOCAL_DB_PASSWORD` 확인
-3. 로컬 DB의 데이터베이스 이름이 `mypoly_lawdata`인지 확인
+- `--no-owner --no-privileges` 옵션 사용
+- 또는 `SET session_replication_role = replica;` 사용
+
+### 인코딩 문제
+
+**증상**: 한글이 깨짐
+
+**해결 방법**:
+```powershell
+# UTF-8 인코딩 명시
+$env:PGCLIENTENCODING="UTF8"
+pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
+```
 
 ## 📝 실행 예시
 
-```
-================================================================================
-로컬 DB → Cloud SQL 데이터 마이그레이션 (공개 IP 직접 사용)
-================================================================================
+```powershell
+# 1. 덤프 생성
+PS C:\polywave\MyPoly-LawData> pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
+Password: 
 
-⚠️ 사전 준비:
-1. GCP 콘솔 → Cloud SQL → 인스턴스 → 연결
-2. '승인된 네트워크'에 로컬 PC의 공개 IP 추가
-3. 공개 IP 확인: https://www.whatismyip.com/
-================================================================================
+# 2. Cloud SQL에 스키마 생성
+PS C:\polywave\MyPoly-LawData> psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f scripts/db/create_tables_postgresql.sql
+Password: 
 
-[1] 로컬 DB 연결 중... (localhost:5432)
-✅ 로컬 DB 연결 성공
-
-[2] Cloud SQL 연결 중... (34.50.48.31:5432)
-✅ Cloud SQL 연결 성공
-
-[3] 데이터 마이그레이션 시작...
-
-[proc_stage_mapping] 마이그레이션 중...
-  📖 로컬 DB에서 데이터 읽는 중...
-  📊 총 5건
-  🗑️ 기존 데이터 삭제 중...
-  ✅ 기존 데이터 삭제 완료
-  💾 데이터 삽입 중...
-  진행: 5/5건 (100%)
-  ✅ 완료: 5건 삽입, 0건 오류
-
-[assembly_members] 마이그레이션 중...
-  ...
-
-마이그레이션 완료! (소요 시간: 0:00:27.822953)
-================================================================================
+# 3. 데이터 복원
+PS C:\polywave\MyPoly-LawData> psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f local_data.sql
+Password: 
+COPY 5
+COPY 306
+COPY 7421
+COPY 98904
 ```
 
 ## 🔗 참고 문서
 
 - [GCP 마이그레이션 완료 보고서](../docs/gcp_migration_summary.md)
 - [Cloud SQL 설정 가이드](../docs/gcp_cloud_sql_setup_guide.md)
-
