@@ -22,17 +22,15 @@ if sys.platform == 'win32':
 # API 키
 # 환경변수에서 가져오거나 기본값 사용
 # 공공데이터포털 인증키 (의안정보 API용)
-ENCODED_SERVICE_KEY = os.environ.get(
-    "BILL_SERVICE_KEY",
-    "MiXjfqnyhsYErA%2FKEzOyLNFwxzbd%2B7VE0k2%2FeVml32gs8WjdeVCOQb06tgG5UaQ7u5bb74Hibe8WkwopNsXceA%3D%3D"
-)
+ENCODED_SERVICE_KEY = os.environ.get("BILL_SERVICE_KEY")
+if not ENCODED_SERVICE_KEY:
+    raise ValueError("BILL_SERVICE_KEY environment variable is required")
 SERVICE_KEY = unquote(ENCODED_SERVICE_KEY)
 
 # 열린국회정보 인증키 (표결정보, 의원정보 API용)
-ASSEMBLY_KEY = os.environ.get(
-    "ASSEMBLY_SERVICE_KEY",
-    "5e85053066dd409b81ed7de0f47bbcab"  # 공익·투표·통계 앱 개발용 인증키
-)
+ASSEMBLY_KEY = os.environ.get("ASSEMBLY_SERVICE_KEY")
+if not ASSEMBLY_KEY:
+    raise ValueError("ASSEMBLY_SERVICE_KEY environment variable is required")
 
 # API 엔드포인트
 BILL_INFO_API = "https://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList"

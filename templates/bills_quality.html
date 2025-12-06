@@ -234,6 +234,148 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        /* 모달 스타일 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+        }
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+        .modal-header h2 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.8em;
+        }
+        .close-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .close-btn:hover {
+            background: #c0392b;
+        }
+        .modal-body {
+            margin-top: 20px;
+        }
+        .detail-section {
+            margin-bottom: 30px;
+        }
+        .detail-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .detail-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .detail-item.missing {
+            border-left-color: #e74c3c;
+            background: #fff5f5;
+        }
+        .detail-item .label {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .detail-item .value {
+            color: #555;
+            word-break: break-word;
+        }
+        .detail-item .value.empty {
+            color: #999;
+            font-style: italic;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .status-badge.has-value {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-badge.no-value {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .loading-modal {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        .sort-btn {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 20px;
+        }
+        .sort-btn:hover {
+            background: #e8e9ea;
+        }
+        .sort-btn::after {
+            content: ' ↕';
+            position: absolute;
+            right: 5px;
+            color: #999;
+        }
+        .sort-btn.asc::after {
+            content: ' ↑';
+            color: #667eea;
+        }
+        .sort-btn.desc::after {
+            content: ' ↓';
+            color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -302,7 +444,7 @@
                 <table class="bills-table">
                     <thead>
                         <tr>
-                            <th>의안번호</th>
+                            <th class="sort-btn" data-sort="bill_no" data-order="desc">의안번호 ↕</th>
                             <th>의안명</th>
                             <th>제안자구분</th>
                             <th>처리구분</th>
@@ -321,9 +463,17 @@
         </div>
     </div>
 
+    <!-- 의안 상세 정보 모달 -->
+    <div id="billDetailModal" class="modal">
+        <div class="modal-content">
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
     <script>
         let allBills = [];
         let currentFilter = 'all';
+        let currentSort = { field: 'bill_no', order: 'desc' };
 
         // 데이터 로드
         async function loadData() {
@@ -373,6 +523,34 @@
             }
         }
 
+        // 정렬 함수
+        function sortBills(bills) {
+            const sorted = [...bills];
+            sorted.sort((a, b) => {
+                let aVal = a[currentSort.field] || '';
+                let bVal = b[currentSort.field] || '';
+                
+                // 의안번호 정렬 (숫자 부분 추출)
+                if (currentSort.field === 'bill_no') {
+                    // 의안번호에서 숫자 부분 추출 (예: "제1234호" -> 1234)
+                    const getNumber = (str) => {
+                        if (!str) return 0;
+                        const match = str.match(/\d+/);
+                        return match ? parseInt(match[0]) : 0;
+                    };
+                    aVal = getNumber(aVal);
+                    bVal = getNumber(bVal);
+                }
+                
+                if (currentSort.order === 'asc') {
+                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                } else {
+                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                }
+            });
+            return sorted;
+        }
+
         // 의안 목록 표시
         function displayBills(bills) {
             const tbody = document.getElementById('billsTable');
@@ -383,7 +561,10 @@
                 return;
             }
 
-            bills.forEach(bill => {
+            // 정렬 적용
+            const sortedBills = sortBills(bills);
+
+            sortedBills.forEach(bill => {
                 const row = document.createElement('tr');
                 const completionClass = bill.completion_rate < 50 ? 'low' : 
                                       bill.completion_rate < 80 ? 'medium' : 'high';
@@ -428,6 +609,44 @@
             displayBills(filtered);
         });
 
+        // 정렬 기능
+        document.querySelectorAll('.sort-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const field = e.target.dataset.sort;
+                const currentOrder = e.target.dataset.order;
+                
+                // 정렬 방향 토글
+                const newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+                
+                // 모든 정렬 버튼 초기화
+                document.querySelectorAll('.sort-btn').forEach(b => {
+                    b.classList.remove('asc', 'desc');
+                    b.dataset.order = '';
+                });
+                
+                // 현재 버튼 업데이트
+                e.target.classList.add(newOrder);
+                e.target.dataset.order = newOrder;
+                
+                // 정렬 적용
+                currentSort = { field: field, order: newOrder };
+                
+                // 검색 및 필터 적용 후 정렬
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                let filtered = allBills.filter(b => 
+                    (b.bill_no && b.bill_no.toLowerCase().includes(searchTerm)) ||
+                    (b.title && b.title.toLowerCase().includes(searchTerm)) ||
+                    (b.proposer_kind && b.proposer_kind.toLowerCase().includes(searchTerm))
+                );
+                
+                if (currentFilter !== 'all') {
+                    filtered = applyFilter(filtered);
+                }
+                
+                displayBills(filtered);
+            });
+        });
+
         // 필터 기능
         function applyFilter(bills) {
             switch(currentFilter) {
@@ -463,34 +682,98 @@
             });
         });
 
-        // 의안 상세 정보
+        // 의안 상세 정보 모달
         async function showBillDetail(billId) {
+            const modal = document.getElementById('billDetailModal');
+            const modalContent = document.getElementById('modalContent');
+            
+            // 모달 표시
+            modal.classList.add('active');
+            modalContent.innerHTML = '<div class="loading-modal">데이터 로딩 중...</div>';
+            
             try {
                 const response = await fetch(`/api/bills/quality/detail/${billId}`);
                 const data = await response.json();
                 
-                let message = `의안번호: ${data.bill.bill_no || '-'}\n`;
-                message += `의안명: ${data.bill.title || '-'}\n\n`;
-                message += '데이터 현황:\n';
+                // 모달 내용 생성
+                let html = `
+                    <div class="modal-header">
+                        <h2>${data.bill.title || '의안 정보'}</h2>
+                        <button class="close-btn" onclick="closeBillDetail()">닫기</button>
+                    </div>
+                    <div class="modal-body">
+                `;
                 
                 Object.keys(data.field_details).forEach(category => {
-                    message += `\n[${category}]\n`;
+                    html += `<div class="detail-section">`;
+                    html += `<h3>${category}</h3>`;
+                    html += `<div class="detail-grid">`;
+                    
                     data.field_details[category].forEach(field => {
-                        const status = field.has_value ? '✓' : '✗';
-                        let value = field.value;
+                        const hasValue = field.has_value;
+                        let value = field.value || '(없음)';
                         if (typeof value === 'object') {
-                            value = JSON.stringify(value);
+                            value = JSON.stringify(value, null, 2);
                         }
-                        message += `${status} ${field.label}: ${value || '(없음)'}\n`;
+                        const valueClass = hasValue ? '' : 'empty';
+                        const itemClass = hasValue ? '' : 'missing';
+                        const statusBadge = hasValue 
+                            ? '<span class="status-badge has-value">✓ 있음</span>' 
+                            : '<span class="status-badge no-value">✗ 없음</span>';
+                        
+                        html += `
+                            <div class="detail-item ${itemClass}">
+                                <div class="label">
+                                    ${field.label}
+                                    ${statusBadge}
+                                </div>
+                                <div class="value ${valueClass}">${value}</div>
+                            </div>
+                        `;
                     });
+                    
+                    html += `</div></div>`;
                 });
                 
-                alert(message);
+                html += `</div>`;
+                modalContent.innerHTML = html;
+                
             } catch (error) {
                 console.error('의안 상세 정보 로드 오류:', error);
-                alert('의안 정보를 불러올 수 없습니다.');
+                modalContent.innerHTML = `
+                    <div class="modal-header">
+                        <h2>오류</h2>
+                        <button class="close-btn" onclick="closeBillDetail()">닫기</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                            의안 정보를 불러올 수 없습니다.<br>
+                            ${error.message}
+                        </div>
+                    </div>
+                `;
             }
         }
+        
+        function closeBillDetail() {
+            const modal = document.getElementById('billDetailModal');
+            modal.classList.remove('active');
+        }
+        
+        // 모달 외부 클릭 시 닫기
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('billDetailModal');
+            if (e.target === modal) {
+                closeBillDetail();
+            }
+        });
+        
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeBillDetail();
+            }
+        });
 
         // 현재 페이지에 맞게 active 클래스 설정
         document.addEventListener('DOMContentLoaded', function() {

@@ -976,6 +976,7 @@ def get_bills_quality_stats():
             ('proc_date', '처리일'),
             ('general_result', '일반결과'),
             ('summary_raw', '원문내용'),
+            ('headline', 'AI 헤드라인'),
             ('summary', 'AI 요약'),
             ('categories', '카테고리'),
             ('vote_for', '찬성 가중치'),
@@ -1030,7 +1031,8 @@ def get_bills_quality_stats():
                     CASE WHEN proc_date IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN general_result IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN summary_raw IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END +
+                    CASE WHEN summary IS NOT NULL AND summary != '' THEN 1 ELSE 0 END +
                     CASE WHEN categories IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN vote_for IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN vote_against IS NOT NULL THEN 1 ELSE 0 END +
@@ -1038,7 +1040,7 @@ def get_bills_quality_stats():
                     CASE WHEN proposer_count IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN link_url IS NOT NULL THEN 1 ELSE 0 END
                 ) as filled_fields,
-                18 as total_fields
+                19 as total_fields
             FROM bills
             WHERE proposal_date >= '2025-01-01'
             ORDER BY filled_fields ASC, proposal_date DESC
@@ -1062,7 +1064,7 @@ def get_bills_quality_stats():
         # 표결 결과 연결 통계
         cur.execute("""
             SELECT 
-                COUNT(DISTINCT b.bill_id) as bills_with_votes,
+                COUNT(DISTINCT b.bill_id) FILTER (WHERE v.bill_id IS NOT NULL) as bills_with_votes,
                 COUNT(DISTINCT b.bill_id) FILTER (WHERE v.bill_id IS NULL) as bills_without_votes
             FROM bills b
             LEFT JOIN votes v ON b.bill_id = v.bill_id
@@ -1100,7 +1102,7 @@ def get_bill_quality_detail(bill_id):
                 bill_id, bill_no, title, proposal_date,
                 proposer_kind, proposer_name,
                 proc_stage_cd, pass_gubn, proc_date,
-                general_result, summary_raw, summary,
+                general_result, summary_raw, summary, headline,
                 categories, vote_for, vote_against,
                 proc_stage_order, proposer_count, link_url
             FROM bills
@@ -1133,6 +1135,7 @@ def get_bill_quality_detail(bill_id):
             ],
             '내용 정보': [
                 ('summary_raw', '원문내용'),
+                ('headline', 'AI 헤드라인'),
                 ('summary', 'AI 요약'),
                 ('categories', '카테고리'),
             ],

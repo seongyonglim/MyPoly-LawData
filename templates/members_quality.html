@@ -129,12 +129,35 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            table-layout: fixed;
         }
         .members-table th,
         .members-table td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #e0e0e0;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .members-table th:nth-child(1),
+        .members-table td:nth-child(1) {
+            width: 15%;
+        }
+        .members-table th:nth-child(2),
+        .members-table td:nth-child(2) {
+            width: 15%;
+        }
+        .members-table th:nth-child(3),
+        .members-table td:nth-child(3) {
+            width: 20%;
+        }
+        .members-table th:nth-child(4),
+        .members-table td:nth-child(4) {
+            width: 25%;
+        }
+        .members-table th:nth-child(5),
+        .members-table td:nth-child(5) {
+            width: 25%;
         }
         .members-table th {
             background: #f8f9fa;

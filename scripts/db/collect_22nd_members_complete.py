@@ -18,10 +18,9 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-ASSEMBLY_KEY = os.environ.get(
-    "ASSEMBLY_SERVICE_KEY",
-    "5e85053066dd409b81ed7de0f47bbcab"
-)
+ASSEMBLY_KEY = os.environ.get("ASSEMBLY_SERVICE_KEY")
+if not ASSEMBLY_KEY:
+    raise ValueError("ASSEMBLY_SERVICE_KEY environment variable is required")
 
 MEMBER_INFO_API = "https://open.assembly.go.kr/portal/openapi/ALLNAMEMBER"
 
@@ -53,7 +52,7 @@ def get_db_config():
             'host': 'localhost',
             'database': 'mypoly_lawdata',
             'user': 'postgres',
-            'password': 'maza_970816',
+            'password': os.environ.get('DB_PASSWORD'),
             'port': 5432
         }
 

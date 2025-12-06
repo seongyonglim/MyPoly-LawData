@@ -9,7 +9,7 @@ conn = psycopg2.connect(
     host='localhost',
     database='mypoly_lawdata',
     user='postgres',
-    password='maza_970816',
+    password=os.environ.get('DB_PASSWORD'),
     port=5432
 )
 

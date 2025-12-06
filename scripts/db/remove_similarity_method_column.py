@@ -13,17 +13,26 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'mypoly_lawdata',
-    'user': 'postgres',
-    'password': 'maza_970816',
-    'port': 5432
-}
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def get_db_config():
+    return {
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
+        'user': os.environ.get('DB_USER', 'postgres'),
+        'password': os.environ.get('DB_PASSWORD'),
+        'port': int(os.environ.get('DB_PORT', '5432'))
+    }
 
 def remove_similarity_method_column():
     """similarity_method 컬럼 제거"""
-    conn = psycopg2.connect(**DB_CONFIG)
+    config = get_db_config()
+    if not config['password']:
+        raise ValueError("DB_PASSWORD environment variable is required")
+    conn = psycopg2.connect(**config)
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
     print("=" * 80)

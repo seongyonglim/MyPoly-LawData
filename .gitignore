@@ -17,6 +17,15 @@ instance/
 .env
 .env.local
 *.env
+.env.*
+
+# API Keys and Secrets
+*secret*
+*key*
+*password*
+*credential*
+**/중요정보/**
+**/important/**
 
 # IDE
 .vscode/

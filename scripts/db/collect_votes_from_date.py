@@ -18,10 +18,9 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-ASSEMBLY_KEY = os.environ.get(
-    "ASSEMBLY_SERVICE_KEY",
-    "5e85053066dd409b81ed7de0f47bbcab"
-)
+ASSEMBLY_KEY = os.environ.get("ASSEMBLY_SERVICE_KEY")
+if not ASSEMBLY_KEY:
+    raise ValueError("ASSEMBLY_SERVICE_KEY environment variable is required")
 
 VOTE_INFO_API = "https://open.assembly.go.kr/portal/openapi/nojepdqqaweusdfbi"
 
@@ -53,7 +52,7 @@ def get_db_config():
             'host': 'localhost',
             'database': 'mypoly_lawdata',
             'user': 'postgres',
-            'password': 'maza_970816',
+            'password': os.environ.get('DB_PASSWORD'),
             'port': 5432
         }
 
@@ -73,7 +72,7 @@ def parse_datetime(datetime_str):
         pass
     return None
 
-def collect_votes_from_date(start_date_str="20251015"):
+def collect_votes_from_date(start_date_str="20251015", end_date_str=None):
     """특정 날짜부터 표결 정보 수집"""
     conn = get_db_connection()
     cur = conn.cursor()
@@ -83,8 +82,15 @@ def collect_votes_from_date(start_date_str="20251015"):
         print(f"  ❌ 잘못된 날짜 형식: {start_date_str}")
         return
     
+    end_date = None
+    if end_date_str:
+        end_date = parse_datetime(end_date_str + "235959")
+    
     print("=" * 60)
-    print(f"표결 정보 수집 시작 (표결일: {start_date_str} 이후)")
+    if end_date:
+        print(f"표결 정보 수집 시작 (표결일: {start_date_str} ~ {end_date_str})")
+    else:
+        print(f"표결 정보 수집 시작 (표결일: {start_date_str} 이후)")
     print("=" * 60)
     
     # bills 테이블에서 모든 bill_id 가져오기
@@ -131,6 +137,10 @@ def collect_votes_from_date(start_date_str="20251015"):
                 
                 # 표결일이 시작일 이후인 것만 저장
                 if vote_date and vote_date < start_date:
+                    continue
+                
+                # 표결일이 종료일 이후인 것은 건너뛰기
+                if end_date and vote_date and vote_date > end_date:
                     continue
                 
                 vote_result = item.findtext("RESULT_VOTE_MOD", "").strip()
@@ -191,5 +201,6 @@ def collect_votes_from_date(start_date_str="20251015"):
 if __name__ == '__main__':
     import sys
     start_date = sys.argv[1] if len(sys.argv) > 1 else "20250101"
-    collect_votes_from_date(start_date)
+    end_date = sys.argv[2] if len(sys.argv) > 2 else None
+    collect_votes_from_date(start_date, end_date)
 

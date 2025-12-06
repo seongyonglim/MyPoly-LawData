@@ -19,10 +19,9 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-ENCODED_SERVICE_KEY = os.environ.get(
-    "BILL_SERVICE_KEY",
-    "MiXjfqnyhsYErA%2FKEzOyLNFwxzbd%2B7VE0k2%2FeVml32gs8WjdeVCOQb06tgG5UaQ7u5bb74Hibe8WkwopNsXceA%3D%3D"
-)
+ENCODED_SERVICE_KEY = os.environ.get("BILL_SERVICE_KEY")
+if not ENCODED_SERVICE_KEY:
+    raise ValueError("BILL_SERVICE_KEY environment variable is required")
 SERVICE_KEY = unquote(ENCODED_SERVICE_KEY)
 
 BILL_INFO_API = "https://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList"
@@ -55,7 +54,7 @@ def get_db_config():
             'host': 'localhost',
             'database': 'mypoly_lawdata',
             'user': 'postgres',
-            'password': 'maza_970816',
+            'password': os.environ.get('DB_PASSWORD'),
             'port': 5432
         }
 
@@ -75,22 +74,49 @@ def parse_date(date_str):
         pass
     return None
 
-def collect_bills_from_date(start_date_str="20250801"):
-    """특정 날짜부터 의안 정보 수집"""
+def get_latest_proposal_date():
+    """DB에서 가장 최근 제안일 가져오기"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT MAX(proposal_date) FROM bills WHERE proposal_date IS NOT NULL")
+        result = cur.fetchone()
+        return result[0] if result and result[0] else None
+    finally:
+        cur.close()
+        conn.close()
+
+def collect_bills_from_date(start_date_str="20250801", end_date_str=None):
+    """특정 날짜부터 의안 정보 수집 (종료일 지정 가능)"""
     conn = get_db_connection()
     cur = conn.cursor()
     
     total_inserted = 0
     total_updated = 0
     
+    # 최신 제안일 확인
+    latest_date = get_latest_proposal_date()
+    if latest_date:
+        print(f"현재 DB의 최신 제안일: {latest_date}")
+    
     print("=" * 60)
-    print(f"의안 정보 수집 시작 (제안일: {start_date_str} 이후)")
+    if end_date_str:
+        print(f"의안 정보 수집 시작 (제안일: {start_date_str} ~ {end_date_str})")
+    else:
+        print(f"의안 정보 수집 시작 (제안일: {start_date_str} 이후)")
     print("=" * 60)
     
     start_date = parse_date(start_date_str)
     if not start_date:
         print(f"  ❌ 잘못된 날짜 형식: {start_date_str}")
         return
+    
+    end_date = None
+    if end_date_str:
+        end_date = parse_date(end_date_str)
+        if not end_date:
+            print(f"  ❌ 잘못된 종료일 형식: {end_date_str}")
+            return
     
     page = 1
     page_size = 100
@@ -131,18 +157,20 @@ def collect_bills_from_date(start_date_str="20250801"):
                 
                 proposal_date = parse_date(item.findtext("proposeDt", ""))
                 
-                # 제안일이 시작일 이전이면 조기 종료 (날짜순 정렬 가정)
+                # 제안일이 시작일 이전이면 건너뛰기
                 if proposal_date and proposal_date < start_date:
-                    early_exit = True
-                    break
+                    continue
                 
-                # 제안일이 시작일 이후인 것만 저장
-                if proposal_date and proposal_date < start_date:
+                # 제안일이 종료일 이후인 것은 건너뛰기
+                if end_date and proposal_date and proposal_date > end_date:
                     continue
                 
                 bill_no = item.findtext("billNo", "").strip()
                 title = item.findtext("billName", "").strip()
                 proposer_kind = item.findtext("proposerKind", "").strip()
+                # 제안자 이름: proposerNm 또는 proposerName 필드 확인
+                proposer_name = item.findtext("proposerNm", "") or item.findtext("proposerName", "")
+                proposer_name = proposer_name.strip() if proposer_name else ""
                 proc_stage_cd = item.findtext("procStageCd", "").strip()
                 pass_gubn = item.findtext("passGubn", "").strip()
                 proc_date = parse_date(item.findtext("procDt", ""))
@@ -153,11 +181,11 @@ def collect_bills_from_date(start_date_str="20250801"):
                 try:
                     cur.execute("""
                         INSERT INTO bills (
-                            bill_id, bill_no, title, proposal_date, proposer_kind,
+                            bill_id, bill_no, title, proposal_date, proposer_kind, proposer_name,
                             proc_stage_cd, pass_gubn, proc_date, general_result,
                             summary_raw, link_url, created_at, updated_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s,
                             %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
@@ -167,6 +195,7 @@ def collect_bills_from_date(start_date_str="20250801"):
                             title = EXCLUDED.title,
                             proposal_date = EXCLUDED.proposal_date,
                             proposer_kind = EXCLUDED.proposer_kind,
+                            proposer_name = EXCLUDED.proposer_name,
                             proc_stage_cd = EXCLUDED.proc_stage_cd,
                             pass_gubn = EXCLUDED.pass_gubn,
                             proc_date = EXCLUDED.proc_date,
@@ -175,7 +204,7 @@ def collect_bills_from_date(start_date_str="20250801"):
                             link_url = EXCLUDED.link_url,
                             updated_at = CURRENT_TIMESTAMP
                     """, (
-                        bill_id, bill_no, title, proposal_date, proposer_kind,
+                        bill_id, bill_no, title, proposal_date, proposer_kind, proposer_name,
                         proc_stage_cd, pass_gubn, proc_date, general_result,
                         summary_raw, link_url
                     ))
@@ -195,10 +224,6 @@ def collect_bills_from_date(start_date_str="20250801"):
             
             conn.commit()
             print(f"  ✅ 페이지 {page} 완료 (신규: {page_inserted}, 업데이트: {page_updated})")
-            
-            if early_exit:
-                print(f"  조기 종료: 제안일이 {start_date_str} 이전인 의안 발견")
-                break
             
             if len(items) < page_size:
                 break
@@ -223,5 +248,6 @@ def collect_bills_from_date(start_date_str="20250801"):
 if __name__ == '__main__':
     import sys
     start_date = sys.argv[1] if len(sys.argv) > 1 else "20250101"
-    collect_bills_from_date(start_date)
+    end_date = sys.argv[2] if len(sys.argv) > 2 else None
+    collect_bills_from_date(start_date, end_date)
 
