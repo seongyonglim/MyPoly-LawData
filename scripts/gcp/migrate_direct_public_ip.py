@@ -16,23 +16,28 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # 로컬 DB 설정
 LOCAL_DB = {
-    'host': 'localhost',
-    'database': 'mypoly_lawdata',
-    'user': 'postgres',
-    'password': 'maza_970816',
-    'port': 5432
+    'host': os.environ.get('LOCAL_DB_HOST', 'localhost'),
+    'database': os.environ.get('LOCAL_DB_NAME', 'mypoly_lawdata'),
+    'user': os.environ.get('LOCAL_DB_USER', 'postgres'),
+    'password': os.environ.get('LOCAL_DB_PASSWORD'),
+    'port': int(os.environ.get('LOCAL_DB_PORT', '5432'))
 }
 
 # Cloud SQL 설정 (공개 IP 직접 사용)
 # GCP 콘솔에서 방화벽 규칙에 로컬 PC의 공개 IP를 추가해야 함
 CLOUD_DB = {
-    'host': '34.50.48.31',  # Cloud SQL 공개 IP (GCP 콘솔에서 확인)
-    'database': 'mypoly_lawdata',
-    'user': 'postgres',
-    'password': 'Mypoly!2025',
-    'port': 5432
+    'host': os.environ.get('CLOUD_DB_HOST'),  # Cloud SQL 공개 IP (GCP 콘솔에서 확인)
+    'database': os.environ.get('CLOUD_DB_NAME', 'mypoly_lawdata'),
+    'user': os.environ.get('CLOUD_DB_USER', 'postgres'),
+    'password': os.environ.get('CLOUD_DB_PASSWORD'),
+    'port': int(os.environ.get('CLOUD_DB_PORT', '5432'))
 }
 
 def get_table_columns(cur, table_name):
@@ -154,10 +159,25 @@ def main():
     print("=" * 80)
     print("로컬 DB → Cloud SQL 데이터 마이그레이션 (공개 IP 직접 사용)")
     print("=" * 80)
+    
+    # 환경 변수 확인
+    if not LOCAL_DB['password']:
+        print("❌ 오류: LOCAL_DB_PASSWORD 환경 변수가 필요합니다.")
+        print("   .env 파일에 다음을 추가하세요:")
+        print("   LOCAL_DB_PASSWORD=your_local_password")
+        return
+    
+    if not CLOUD_DB['host'] or not CLOUD_DB['password']:
+        print("❌ 오류: CLOUD_DB_HOST와 CLOUD_DB_PASSWORD 환경 변수가 필요합니다.")
+        print("   .env 파일에 다음을 추가하세요:")
+        print("   CLOUD_DB_HOST=34.50.48.31")
+        print("   CLOUD_DB_PASSWORD=your_cloud_password")
+        return
+    
     print("\n⚠️ 사전 준비:")
     print("1. GCP 콘솔 → Cloud SQL → 인스턴스 → 연결")
     print("2. '승인된 네트워크'에 로컬 PC의 공개 IP 추가")
-    print("3. 공개 IP: 61.74.128.66")
+    print("3. 공개 IP 확인: https://www.whatismyip.com/")
     print("=" * 80)
     
     # 로컬 DB 연결
