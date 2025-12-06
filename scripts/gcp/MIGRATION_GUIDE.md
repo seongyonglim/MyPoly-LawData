@@ -72,7 +72,7 @@ psql -h 34.50.48.31 -U postgres -d mypoly_lawdata -f local_data.sql
 
 ### 1. 환경 변수 설정
 
-프로젝트 루트의 `.env` 파일에 다음을 추가:
+프로젝트 루트에 `.env` 파일을 생성하고 다음 내용을 추가:
 
 ```env
 # 로컬 DB 설정
@@ -90,6 +90,38 @@ CLOUD_DB_PASSWORD=your_cloud_password
 CLOUD_DB_PORT=5432
 ```
 
+**PowerShell에서 .env 파일 생성:**
+
+```powershell
+# 프로젝트 디렉토리로 이동
+cd C:\polywave\MyPoly-LawData
+
+# .env 파일 생성 (메모장으로 열어서 수정)
+notepad .env
+```
+
+또는 직접 생성:
+
+```powershell
+@"
+# 로컬 DB 설정
+LOCAL_DB_HOST=localhost
+LOCAL_DB_NAME=mypoly_lawdata
+LOCAL_DB_USER=postgres
+LOCAL_DB_PASSWORD=your_local_password
+LOCAL_DB_PORT=5432
+
+# Cloud SQL 설정
+CLOUD_DB_HOST=34.50.48.31
+CLOUD_DB_NAME=mypoly_lawdata
+CLOUD_DB_USER=postgres
+CLOUD_DB_PASSWORD=your_cloud_password
+CLOUD_DB_PORT=5432
+"@ | Out-File -FilePath .env -Encoding utf8
+```
+
+**주의**: `your_local_password`와 `your_cloud_password`를 실제 비밀번호로 변경하세요!
+
 ### 2. 마이그레이션 실행
 
 ```powershell
@@ -101,9 +133,6 @@ cd C:\polywave\MyPoly-LawData
 
 # 필요한 패키지 설치 (처음 한 번만)
 pip install python-dotenv psycopg2-binary
-
-# 또는 requirements.txt의 모든 패키지 설치
-# pip install -r requirements.txt
 
 # 마이그레이션 실행
 python scripts/gcp/migrate_direct_public_ip.py
@@ -162,7 +191,18 @@ $env:PGCLIENTENCODING="UTF8"
 pg_dump -h localhost -U postgres -d mypoly_lawdata --data-only --no-owner --no-privileges > local_data.sql
 ```
 
+### 환경 변수 오류
+
+**증상**: `❌ 오류: LOCAL_DB_PASSWORD 환경 변수가 필요합니다.`
+
+**해결 방법**:
+1. 프로젝트 루트에 `.env` 파일이 있는지 확인
+2. `.env` 파일에 필요한 환경 변수가 모두 있는지 확인
+3. 비밀번호가 올바르게 입력되었는지 확인
+
 ## 📝 실행 예시
+
+### pg_dump 방식
 
 ```powershell
 # 1. 덤프 생성
@@ -180,6 +220,27 @@ COPY 5
 COPY 306
 COPY 7421
 COPY 98904
+```
+
+### Python 스크립트 방식
+
+```powershell
+PS C:\polywave\MyPoly-LawData> .venv\Scripts\Activate.ps1
+(.venv) PS C:\polywave\MyPoly-LawData> python scripts/gcp/migrate_direct_public_ip.py
+================================================================================
+로컬 DB → Cloud SQL 데이터 마이그레이션 (공개 IP 직접 사용)
+================================================================================
+
+[1] 로컬 DB 연결 중... (localhost:5432)
+✅ 로컬 DB 연결 성공
+
+[2] Cloud SQL 연결 중... (34.50.48.31:5432)
+✅ Cloud SQL 연결 성공
+
+[3] 데이터 마이그레이션 시작...
+[proc_stage_mapping] 마이그레이션 중...
+  ✅ 완료: 5건 삽입, 0건 오류
+...
 ```
 
 ## 🔗 참고 문서
