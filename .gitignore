@@ -18,6 +18,7 @@ instance/
 .env.local
 *.env
 .env.*
+!.env.example
 
 # API Keys and Secrets
 *secret*
