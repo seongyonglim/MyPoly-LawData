@@ -193,12 +193,15 @@ def get_db_config():
         }
     # 로컬 개발용 (기본값)
     else:
+        password = os.environ.get('DB_PASSWORD')
+        if not password:
+            raise ValueError("DB_PASSWORD environment variable is required")
         return {
-            'host': 'localhost',
-            'database': 'mypoly_lawdata',
-            'user': 'postgres',
-            'password': 'maza_970816',
-            'port': 5432
+            'host': os.environ.get('DB_HOST', 'localhost'),
+            'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
+            'user': os.environ.get('DB_USER', 'postgres'),
+            'password': password,
+            'port': int(os.environ.get('DB_PORT', '5432'))
         }
 
 def get_db_connection():

@@ -42,7 +42,9 @@ def get_db_config():
     db_host = os.environ.get('DB_HOST', 'localhost')
     db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
     db_user = os.environ.get('DB_USER', 'postgres')
-    db_password = os.environ.get('DB_PASSWORD', 'maza_970816')
+    db_password = os.environ.get('DB_PASSWORD')
+    if not db_password:
+        raise ValueError("DB_PASSWORD environment variable is required")
     db_port = int(os.environ.get('DB_PORT', '5432'))
     
     return {

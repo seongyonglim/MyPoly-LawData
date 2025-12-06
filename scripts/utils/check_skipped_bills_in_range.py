@@ -3,6 +3,9 @@
 
 import sys
 import os
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Windows 환경에서 한글 출력을 위한 인코딩 설정
 if sys.platform == 'win32':
@@ -10,16 +13,28 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+load_dotenv()
 
-conn = psycopg2.connect(
-    host='localhost',
-    database='mypoly_lawdata',
-    user='postgres',
-    password='maza_970816',
-    port=5432
-)
+def get_db_connection():
+    """데이터베이스 연결 생성"""
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_password = os.environ.get('DB_PASSWORD')
+    db_port = int(os.environ.get('DB_PORT', '5432'))
+    
+    if not db_password:
+        raise ValueError("DB_PASSWORD environment variable is required")
+    
+    return psycopg2.connect(
+        host=db_host,
+        database=db_name,
+        user=db_user,
+        password=db_password,
+        port=db_port
+    )
+
+conn = get_db_connection()
 cur = conn.cursor(cursor_factory=RealDictCursor)
 
 print("=" * 80)

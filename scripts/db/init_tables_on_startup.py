@@ -39,12 +39,15 @@ def get_db_config():
         }
     # 로컬 개발용
     else:
+        password = os.environ.get('DB_PASSWORD')
+        if not password:
+            raise ValueError("DB_PASSWORD environment variable is required")
         return {
-            'host': 'localhost',
-            'database': 'mypoly_lawdata',
-            'user': 'postgres',
-            'password': 'maza_970816',
-            'port': 5432
+            'host': os.environ.get('DB_HOST', 'localhost'),
+            'database': os.environ.get('DB_NAME', 'mypoly_lawdata'),
+            'user': os.environ.get('DB_USER', 'postgres'),
+            'password': password,
+            'port': int(os.environ.get('DB_PORT', '5432'))
         }
 
 def check_tables_exist():
@@ -83,11 +86,16 @@ def create_tables():
         print("데이터베이스 테이블 자동 생성 시작")
         print("=" * 60)
         
-        # SQL 파일 읽기
+        # SQL 파일 읽기 (현재 스크립트와 같은 디렉토리)
         sql_file_path = os.path.join(os.path.dirname(__file__), 'create_tables_postgresql.sql')
         if not os.path.exists(sql_file_path):
-            # 상대 경로로 찾기
-            sql_file_path = 'scripts/db/create_tables_postgresql.sql'
+            # 프로젝트 루트에서 상대 경로로 찾기
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(script_dir))
+            sql_file_path = os.path.join(project_root, 'scripts', 'db', 'create_tables_postgresql.sql')
+        
+        if not os.path.exists(sql_file_path):
+            raise FileNotFoundError(f"SQL 파일을 찾을 수 없습니다: {sql_file_path}")
         
         with open(sql_file_path, 'r', encoding='utf-8') as f:
             sql_content = f.read()
