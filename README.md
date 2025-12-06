@@ -10,15 +10,26 @@
 
 ### 1. 환경 설정
 
-```bash
-# .env 파일 생성 (예시는 .env.example 참고)
-cp .env.example .env
+`.env` 파일 생성 및 다음 정보 입력:
+```
+# 로컬 DB
+LOCAL_DB_HOST=localhost
+LOCAL_DB_NAME=mypoly_lawdata
+LOCAL_DB_USER=postgres
+LOCAL_DB_PASSWORD=your_password
+LOCAL_DB_PORT=5432
 
-# .env 파일에 다음 정보 입력:
-# - DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
-# - BILL_SERVICE_KEY (공공데이터포털 의안정보 API)
-# - ASSEMBLY_SERVICE_KEY (열린국회정보 API)
-# - GEMINI_API_KEY (Google Gemini API)
+# GCP Cloud SQL (선택)
+CLOUD_DB_HOST=your_cloud_sql_ip
+CLOUD_DB_NAME=mypoly_lawdata
+CLOUD_DB_USER=postgres
+CLOUD_DB_PASSWORD=your_cloud_password
+CLOUD_DB_PORT=5432
+
+# API Keys
+BILL_SERVICE_KEY=your_bill_api_key
+ASSEMBLY_SERVICE_KEY=your_assembly_api_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ### 2. 의존성 설치
@@ -45,6 +56,9 @@ python scripts/db/collect_bills_from_date.py 20250101
 
 # 표결 정보 수집
 python scripts/db/collect_votes_from_date.py 20250101
+
+# AI 요약 (의안 제목 및 요약 생성)
+python ai_summarizer/bill_headline_summarizer_db.py
 ```
 
 ### 5. 애플리케이션 실행
@@ -63,50 +77,56 @@ MyPoly-LawData/
 ├── ai_summarizer/                  # AI 요약 스크립트
 │   └── bill_headline_summarizer_db.py
 ├── scripts/
-│   ├── db/                         # 데이터베이스 관련 스크립트
+│   ├── db/                         # 데이터 수집 스크립트
 │   │   ├── collect_bills_from_date.py      # 의안 정보 수집
 │   │   ├── collect_votes_from_date.py     # 표결 정보 수집
 │   │   ├── collect_22nd_members_complete.py # 의원 정보 수집
-│   │   ├── comprehensive_data_fix.py       # 데이터 품질 점검 및 수정
+│   │   ├── create_tables_postgresql.sql    # DB 스키마
 │   │   └── README.md                       # 상세 사용 가이드
-│   └── test_api_samples.py         # API 테스트 스크립트
+│   └── gcp/                        # GCP 마이그레이션
+│       ├── migrate_direct_public_ip.py     # 데이터 마이그레이션
+│       └── README.md                       # 마이그레이션 가이드
 ├── templates/                      # HTML 템플릿
 ├── static/                         # CSS, JavaScript
-└── docs/                           # 문서
-
+└── .env                           # 환경 변수 (Git에 포함되지 않음)
 ```
 
-## 🔑 환경 변수
+## 🔑 주요 기능
 
-필수 환경 변수:
+1. **데이터 수집**
+   - 의안 정보 수집 (`scripts/db/collect_bills_from_date.py`)
+   - 표결 결과 수집 (`scripts/db/collect_votes_from_date.py`)
+   - 의원 정보 수집 (`scripts/db/collect_22nd_members_complete.py`)
 
-- `DB_HOST`: 데이터베이스 호스트 (기본값: localhost)
-- `DB_NAME`: 데이터베이스 이름 (기본값: mypoly_lawdata)
-- `DB_USER`: 데이터베이스 사용자 (기본값: postgres)
-- `DB_PASSWORD`: 데이터베이스 비밀번호 (필수)
-- `DB_PORT`: 데이터베이스 포트 (기본값: 5432)
-- `BILL_SERVICE_KEY`: 공공데이터포털 의안정보 API 키 (필수)
-- `ASSEMBLY_SERVICE_KEY`: 열린국회정보 API 키 (필수)
-- `GEMINI_API_KEY`: Google Gemini API 키 (AI 요약용, 필수)
+2. **AI 분석**
+   - 의안 제목 및 요약 생성 (`ai_summarizer/bill_headline_summarizer_db.py`)
 
-## 📊 주요 기능
+3. **데이터 마이그레이션**
+   - 로컬 → GCP Cloud SQL (`scripts/gcp/migrate_direct_public_ip.py`)
 
-- **의안 정보 수집**: 국회 의안 정보 자동 수집
-- **표결 결과 수집**: 의원별 표결 결과 수집 및 분석
-- **AI 요약**: Gemini API를 활용한 의안 요약 및 카테고리 분류
-- **웹 대시보드**: 의안 및 표결 결과 시각화
-- **데이터 품질 관리**: 자동 데이터 검증 및 보완
+4. **웹 대시보드**
+   - 의안 대시보드
+   - 의안 데이터 품질 대시보드
+   - 의원 데이터 품질 대시보드
+   - 테이블 구조 조회
 
-## 📝 데이터 수집 스크립트
+## 📝 데이터 갱신 워크플로우
 
-자세한 사용법은 `scripts/db/README.md` 참고
+1. 로컬에서 데이터 수집
+   ```bash
+   python scripts/db/collect_bills_from_date.py 20250101
+   python scripts/db/collect_votes_from_date.py 20250101
+   python ai_summarizer/bill_headline_summarizer_db.py
+   ```
+
+2. GCP로 마이그레이션
+   ```bash
+   python scripts/gcp/migrate_direct_public_ip.py
+   ```
+
+3. GCP VM에서 앱 재시작 (필요시)
 
 ## 🔒 보안
 
 - 모든 API 키와 비밀번호는 환경 변수로 관리
 - `.env` 파일은 `.gitignore`에 포함되어 Git에 커밋되지 않음
-- 프로덕션 환경에서는 환경 변수 또는 시크릿 관리 서비스 사용 권장
-
-## 📄 라이선스
-
-이 프로젝트는 개인 프로젝트입니다.

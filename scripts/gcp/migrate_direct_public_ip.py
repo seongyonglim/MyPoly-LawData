@@ -81,28 +81,38 @@ def get_table_columns(cur, table_name):
         return {row[0]: row[1] for row in rows}
 
 def migrate_table(local_cur, cloud_cur, cloud_conn, table_name):
-    """테이블 데이터 마이그레이션"""
+    """테이블 데이터 마이그레이션 (스트리밍 방식으로 최적화)"""
     print(f"\n[{table_name}] 마이그레이션 중...")
     
     try:
-        # 로컬에서 데이터 읽기
-        print(f"  📖 로컬 DB에서 데이터 읽는 중...")
-        local_cur.execute(f"SELECT * FROM {table_name} ORDER BY 1")
-        rows = local_cur.fetchall()
+        # 먼저 총 행 수 확인
+        print(f"  📊 데이터 개수 확인 중...", end='', flush=True)
+        step_start = datetime.now()
+        local_cur.execute(f"SELECT COUNT(*) as cnt FROM {table_name}")
+        total_rows = local_cur.fetchone()['cnt']
+        print(f" (완료, {datetime.now() - step_start}) - 총 {total_rows:,}건", flush=True)
         
-        if not rows:
+        if total_rows == 0:
             print(f"  ⚠️ 데이터 없음 (건너뜀)")
             return
         
-        total_rows = len(rows)
-        print(f"  📊 총 {total_rows:,}건")
-        
-        # 컬럼 정보
-        columns = list(rows[0].keys())
-        
         # Cloud SQL 테이블 구조 확인
+        print(f"  🔍 Cloud SQL 테이블 구조 확인 중...", end='', flush=True)
+        step_start = datetime.now()
         cloud_columns = get_table_columns(cloud_cur, table_name)
         cloud_column_names = list(cloud_columns.keys())
+        print(f" (완료, {datetime.now() - step_start})", flush=True)
+        
+        # 로컬 테이블의 첫 번째 행으로 컬럼 정보 확인
+        print(f"  🔍 로컬 테이블 컬럼 확인 중...", end='', flush=True)
+        step_start = datetime.now()
+        local_cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
+        sample_row = local_cur.fetchone()
+        if not sample_row:
+            print(f" (데이터 없음)", flush=True)
+            return
+        columns = list(sample_row.keys())
+        print(f" (완료, {datetime.now() - step_start})", flush=True)
         
         # 공통 컬럼만 사용
         common_columns = [col for col in columns if col in cloud_column_names]
@@ -114,61 +124,171 @@ def migrate_table(local_cur, cloud_cur, cloud_conn, table_name):
         placeholders = ', '.join(['%s'] * len(common_columns))
         
         # 기존 데이터 삭제
-        print(f"  🗑️ 기존 데이터 삭제 중...")
+        print(f"  🗑️ 기존 데이터 삭제 중...", end='', flush=True)
+        step_start = datetime.now()
         try:
             cloud_cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")
             cloud_conn.commit()
-            print(f"  ✅ 기존 데이터 삭제 완료")
+            print(f" (완료, {datetime.now() - step_start})", flush=True)
         except Exception as e:
-            print(f"  ⚠️ TRUNCATE 실패 (계속 진행): {e}")
+            print(f" (실패: {e}, {datetime.now() - step_start})", flush=True)
             cloud_conn.rollback()
+            # DELETE로 대체 시도
+            try:
+                cloud_cur.execute(f"DELETE FROM {table_name}")
+                cloud_conn.commit()
+                print(f"  (DELETE로 재시도 완료)", flush=True)
+            except Exception as e2:
+                print(f"  (DELETE도 실패: {e2})", flush=True)
+                cloud_conn.rollback()
         
-        # 배치 삽입
-        print(f"  💾 데이터 삽입 중...")
-        batch_size = 1000
+        # 스트리밍 방식으로 데이터 읽기 및 삽입
+        print(f"  💾 데이터 삽입 시작 (스트리밍 방식)...")
+        batch_size = 5000  # 배치 크기 증가
+        commit_interval = 3  # 3개 배치마다 커밋
+        local_cur.itersize = batch_size  # 서버 사이드 커서 크기 설정
+        
         inserted = 0
         error_count = 0
+        batch_count = 0
+        start_time = datetime.now()
         
-        for i in range(0, total_rows, batch_size):
-            batch = rows[i:min(i+batch_size, total_rows)]
-            values_list = []
-            
-            for row in batch:
-                values = [row[col] for col in common_columns]
-                values_list.append(values)
-            
+        # votes 테이블인 경우 외래키 제약조건 일시 비활성화
+        if table_name == 'votes':
+            print(f"  🔧 외래키 제약조건 일시 비활성화 중...", end='', flush=True)
             try:
+                cloud_cur.execute("ALTER TABLE votes DISABLE TRIGGER ALL;")
+                cloud_conn.commit()
+                print(f" (완료)", flush=True)
+            except Exception as e:
+                print(f" (경고: {str(e)[:50]})", flush=True)
+        
+        # 스트리밍 방식으로 데이터 읽기
+        print(f"  📖 쿼리 실행 중...", end='', flush=True)
+        query_start = datetime.now()
+        local_cur.execute(f"SELECT * FROM {table_name}")
+        print(f" (완료, {datetime.now() - query_start})", flush=True)
+        
+        values_buffer = []  # 커밋 전 버퍼
+        
+        while True:
+            print(f"  📥 배치 {batch_count + 1} 데이터 읽는 중...", end='', flush=True)
+            fetch_start = datetime.now()
+            batch = local_cur.fetchmany(batch_size)
+            fetch_time = (datetime.now() - fetch_start).total_seconds()
+            
+            if not batch:
+                print(f" (데이터 없음, {fetch_time:.2f}s)", flush=True)
+                break
+            
+            batch_count += 1
+            print(f" ({len(batch):,}건 읽음, {fetch_time:.2f}s)", flush=True)
+            
+            # 배치 데이터 준비
+            print(f"    → 데이터 준비 중...", end='', flush=True)
+            batch_prep_start = datetime.now()
+            values_list = []
+            for row in batch:
+                values = []
+                for col in common_columns:
+                    val = row[col]
+                    # 딕셔너리나 리스트는 JSON 문자열로 변환
+                    if isinstance(val, (dict, list)):
+                        import json
+                        val = json.dumps(val, ensure_ascii=False)
+                    values.append(val)
+                values_list.append(tuple(values))  # 튜플로 변환
+            prep_time = (datetime.now() - batch_prep_start).total_seconds()
+            print(f" (완료, {prep_time:.2f}s)", flush=True)
+            
+            # 버퍼에 추가
+            values_buffer.extend(values_list)
+            
+            # 배치 삽입 실행 (중복 키는 무시)
+            print(f"    → Cloud SQL에 삽입 중...", end='', flush=True)
+            batch_insert_start = datetime.now()
+            try:
+                # 중복 키가 있을 수 있으므로 ON CONFLICT DO NOTHING 사용
+                # 단, primary key 컬럼이 있는 경우에만
+                insert_sql = f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})"
+                
+                # primary key 컬럼 찾기
+                cloud_cur.execute(f"""
+                    SELECT column_name 
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+                    WHERE tc.table_name = %s AND tc.constraint_type = 'PRIMARY KEY'
+                    LIMIT 1
+                """, (table_name,))
+                pk_result = cloud_cur.fetchone()
+                
+                if pk_result:
+                    pk_column = pk_result['column_name'] if isinstance(pk_result, dict) else pk_result[0]
+                    if pk_column in common_columns:
+                        # ON CONFLICT 사용
+                        insert_sql = f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders}) ON CONFLICT ({pk_column}) DO NOTHING"
+                
                 execute_batch(
                     cloud_cur,
-                    f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})",
+                    insert_sql,
                     values_list,
                     page_size=batch_size
                 )
+                insert_time = (datetime.now() - batch_insert_start).total_seconds()
                 inserted += len(batch)
-                cloud_conn.commit()
+                print(f" (완료, {insert_time:.2f}s)", flush=True)
                 
-                progress = (inserted * 100) // total_rows
-                print(f"  진행: {inserted:,}/{total_rows:,}건 ({progress}%)", end='\r')
+                # 커밋 간격마다 커밋 (네트워크 오버헤드 감소)
+                if batch_count % commit_interval == 0:
+                    print(f"    → 커밋 중...", end='', flush=True)
+                    commit_start = datetime.now()
+                    cloud_conn.commit()
+                    commit_time = (datetime.now() - commit_start).total_seconds()
+                    values_buffer = []  # 버퍼 초기화
+                    print(f" (완료, {commit_time:.2f}s)", flush=True)
+                else:
+                    commit_time = 0
+                
+                # 진행률 계산
+                progress = (inserted * 100) // total_rows if total_rows > 0 else 0
+                elapsed = (datetime.now() - start_time).total_seconds()
+                speed = inserted / elapsed if elapsed > 0 else 0
+                remaining = total_rows - inserted
+                eta = remaining / speed if speed > 0 else 0
+                
+                # 진행 상황 요약
+                print(f"  ✅ 배치 {batch_count} 완료: {inserted:,}/{total_rows:,}건 ({progress}%) | "
+                      f"속도: {speed:,.0f}건/초 | 예상 남은 시간: {eta:.0f}초", flush=True)
                 
             except Exception as e:
                 cloud_conn.rollback()
                 error_count += len(batch)
-                if error_count < 10:
-                    print(f"\n  ⚠️ 배치 오류 (건너뜀): {str(e)[:100]}")
-                # 개별 삽입 시도
-                for row in batch:
-                    values = [row[col] for col in common_columns]
-                    try:
-                        cloud_cur.execute(
-                            f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})",
-                            values
-                        )
-                        cloud_conn.commit()
-                        inserted += 1
-                        error_count -= 1
-                    except:
-                        cloud_conn.rollback()
-                        continue
+                error_msg = str(e)
+                print(f"    ❌ 삽입 실패: {error_msg[:200]}", flush=True)
+                print(f"  ⚠️ 배치 {batch_count} 전체 실패, 다음 배치로 진행...", flush=True)
+                # 개별 삽입은 시도하지 않고 건너뜀 (너무 느림)
+                # 필요시 수동으로 재시도
+                continue
+        
+        # 남은 버퍼 커밋
+        if values_buffer:
+            print(f"  💾 남은 데이터 커밋 중...", end='', flush=True)
+            try:
+                cloud_conn.commit()
+                print(f" (완료)", flush=True)
+            except Exception as e:
+                cloud_conn.rollback()
+                print(f" (실패: {e})", flush=True)
+        
+        # votes 테이블인 경우 외래키 제약조건 재활성화
+        if table_name == 'votes':
+            print(f"  🔧 외래키 제약조건 재활성화 중...", end='', flush=True)
+            try:
+                cloud_cur.execute("ALTER TABLE votes ENABLE TRIGGER ALL;")
+                cloud_conn.commit()
+                print(f" (완료)", flush=True)
+            except Exception as e:
+                print(f" (경고: {str(e)[:50]})", flush=True)
         
         print(f"\n  ✅ 완료: {inserted:,}건 삽입, {error_count:,}건 오류")
         
@@ -277,15 +397,21 @@ def main():
     ]
     
     print("\n[3] 데이터 마이그레이션 시작...")
-    start_time = datetime.now()
+    print("=" * 80)
+    overall_start_time = datetime.now()
     
-    for table in tables:
+    for idx, table in enumerate(tables, 1):
+        print(f"\n[{idx}/{len(tables)}] {table} 테이블 처리 중...")
         try:
             migrate_table(local_cur, cloud_cur, cloud_conn, table)
         except Exception as e:
             print(f"  ❌ 테이블 {table} 오류: {e}")
+            import traceback
+            traceback.print_exc()
     
-    elapsed = datetime.now() - start_time
+    print("\n" + "=" * 80)
+    
+    overall_elapsed = datetime.now() - overall_start_time
     
     # 연결 종료
     local_cur.close()
@@ -294,7 +420,9 @@ def main():
     cloud_conn.close()
     
     print("\n" + "=" * 80)
-    print(f"마이그레이션 완료! (소요 시간: {elapsed})")
+    print(f"✅ 마이그레이션 완료!")
+    print(f"   총 소요 시간: {overall_elapsed}")
+    print(f"   평균 처리 속도: {overall_elapsed.total_seconds() / len(tables):.2f}초/테이블")
     print("=" * 80)
 
 if __name__ == '__main__':

@@ -39,13 +39,14 @@ cache = Cache(app)
 def get_db_config():
     """데이터베이스 설정 (환경 변수 우선, 없으면 로컬 기본값)"""
     # GCP 환경 변수 확인
-    db_host = os.environ.get('DB_HOST', 'localhost')
-    db_name = os.environ.get('DB_NAME', 'mypoly_lawdata')
-    db_user = os.environ.get('DB_USER', 'postgres')
-    db_password = os.environ.get('DB_PASSWORD')
+    db_host = os.environ.get('DB_HOST') or os.environ.get('LOCAL_DB_HOST', 'localhost')
+    db_name = os.environ.get('DB_NAME') or os.environ.get('LOCAL_DB_NAME', 'mypoly_lawdata')
+    db_user = os.environ.get('DB_USER') or os.environ.get('LOCAL_DB_USER', 'postgres')
+    # DB_PASSWORD 또는 LOCAL_DB_PASSWORD 확인
+    db_password = os.environ.get('DB_PASSWORD') or os.environ.get('LOCAL_DB_PASSWORD')
     if not db_password:
-        raise ValueError("DB_PASSWORD environment variable is required")
-    db_port = int(os.environ.get('DB_PORT', '5432'))
+        raise ValueError("DB_PASSWORD 또는 LOCAL_DB_PASSWORD environment variable is required")
+    db_port = int(os.environ.get('DB_PORT') or os.environ.get('LOCAL_DB_PORT', '5432'))
     
     return {
         'host': db_host,
@@ -96,21 +97,24 @@ def get_stats():
         """)
         total_bills = cur.fetchone()['total_bills']
         
-        # 표결 진행된 의안 수
+        # 표결 진행된 의안 수 (EXISTS로 최적화 - 더 빠름)
         cur.execute("""
-            SELECT COUNT(DISTINCT b.bill_id) as bills_with_votes
+            SELECT COUNT(*) as bills_with_votes
             FROM bills b
-            INNER JOIN votes v ON b.bill_id = v.bill_id
             WHERE b.proposal_date >= '2025-01-01'
+              AND EXISTS (SELECT 1 FROM votes v WHERE v.bill_id = b.bill_id)
         """)
         bills_with_votes = cur.fetchone()['bills_with_votes']
         
-        # 전체 표결 결과 수
+        # 전체 표결 결과 수 (인덱스 활용)
         cur.execute("""
             SELECT COUNT(*) as total_votes
             FROM votes v
-            INNER JOIN bills b ON v.bill_id = b.bill_id
-            WHERE b.proposal_date >= '2025-01-01'
+            WHERE EXISTS (
+                SELECT 1 FROM bills b 
+                WHERE b.bill_id = v.bill_id 
+                  AND b.proposal_date >= '2025-01-01'
+            )
         """)
         total_votes = cur.fetchone()['total_votes']
         
@@ -135,13 +139,13 @@ def get_stats():
         """)
         processed_bills = cur.fetchone()['count']
         
-        # 처리의안 중 표결 결과가 있는 의안 수
+        # 처리의안 중 표결 결과가 있는 의안 수 (EXISTS로 최적화)
         cur.execute("""
-            SELECT COUNT(DISTINCT b.bill_id) as count
+            SELECT COUNT(*) as count
             FROM bills b
-            INNER JOIN votes v ON b.bill_id = v.bill_id
             WHERE b.proposal_date >= '2025-01-01'
-            AND b.pass_gubn = '처리의안'
+              AND b.pass_gubn = '처리의안'
+              AND EXISTS (SELECT 1 FROM votes v WHERE v.bill_id = b.bill_id)
         """)
         processed_with_votes = cur.fetchone()['count']
         
@@ -249,17 +253,16 @@ def get_bills():
         else:
             order_by = f"b.proposal_date {order.upper()}"
         
-        # 전체 개수 조회
+        # 전체 개수 조회 (votes 조인 제거 - 성능 향상)
         count_query = f"""
-            SELECT COUNT(DISTINCT b.bill_id) as total
+            SELECT COUNT(*) as total
             FROM bills b
-            LEFT JOIN votes v ON b.bill_id = v.bill_id
             WHERE {where_clause}
         """
         cur.execute(count_query, tuple(params_list))
         total = cur.fetchone()['total']
         
-        # 의안 목록 조회 (표결 결과 포함)
+        # 의안 목록 조회 (표결 결과는 서브쿼리로 - 성능 향상)
         query = f"""
             SELECT 
                 b.bill_id,
@@ -273,18 +276,26 @@ def get_bills():
                 b.proc_date,
                 b.general_result,
                 b.link_url,
-                COUNT(DISTINCT v.vote_id) as vote_count,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '찬성' THEN v.vote_id END) as vote_for,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '반대' THEN v.vote_id END) as vote_against,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '기권' THEN v.vote_id END) as vote_abstain,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '불참' THEN v.vote_id END) as vote_absent,
-                COUNT(DISTINCT v.member_no) as member_count
+                COALESCE(v_stats.vote_count, 0) as vote_count,
+                COALESCE(v_stats.vote_for, 0) as vote_for,
+                COALESCE(v_stats.vote_against, 0) as vote_against,
+                COALESCE(v_stats.vote_abstain, 0) as vote_abstain,
+                COALESCE(v_stats.vote_absent, 0) as vote_absent,
+                COALESCE(v_stats.member_count, 0) as member_count
             FROM bills b
-            LEFT JOIN votes v ON b.bill_id = v.bill_id
+            LEFT JOIN (
+                SELECT 
+                    bill_id,
+                    COUNT(*) as vote_count,
+                    COUNT(*) FILTER (WHERE vote_result = '찬성') as vote_for,
+                    COUNT(*) FILTER (WHERE vote_result = '반대') as vote_against,
+                    COUNT(*) FILTER (WHERE vote_result = '기권') as vote_abstain,
+                    COUNT(*) FILTER (WHERE vote_result = '불참') as vote_absent,
+                    COUNT(DISTINCT member_no) as member_count
+                FROM votes
+                GROUP BY bill_id
+            ) v_stats ON b.bill_id = v_stats.bill_id
             WHERE {where_clause}
-            GROUP BY b.bill_id, b.bill_no, b.title, b.proposal_date, 
-                     b.proposer_kind, b.proposer_name, b.proc_stage_cd, b.pass_gubn, 
-                     b.proc_date, b.general_result, b.link_url
             ORDER BY {order_by}
             LIMIT %s OFFSET %s
         """
@@ -328,21 +339,32 @@ def get_bill_detail(bill_id):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
     try:
-        # 의안 기본 정보
+        # 의안 기본 정보 (서브쿼리로 최적화)
         cur.execute("""
             SELECT 
                 b.*,
-                COUNT(DISTINCT v.vote_id) as vote_count,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '찬성' THEN v.vote_id END) as vote_for,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '반대' THEN v.vote_id END) as vote_against,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '기권' THEN v.vote_id END) as vote_abstain,
-                COUNT(DISTINCT CASE WHEN v.vote_result = '불참' THEN v.vote_id END) as vote_absent,
-                COUNT(DISTINCT v.member_no) as member_count
+                COALESCE(v_stats.vote_count, 0) as vote_count,
+                COALESCE(v_stats.vote_for, 0) as vote_for,
+                COALESCE(v_stats.vote_against, 0) as vote_against,
+                COALESCE(v_stats.vote_abstain, 0) as vote_abstain,
+                COALESCE(v_stats.vote_absent, 0) as vote_absent,
+                COALESCE(v_stats.member_count, 0) as member_count
             FROM bills b
-            LEFT JOIN votes v ON b.bill_id = v.bill_id
+            LEFT JOIN (
+                SELECT 
+                    bill_id,
+                    COUNT(*) as vote_count,
+                    COUNT(*) FILTER (WHERE vote_result = '찬성') as vote_for,
+                    COUNT(*) FILTER (WHERE vote_result = '반대') as vote_against,
+                    COUNT(*) FILTER (WHERE vote_result = '기권') as vote_abstain,
+                    COUNT(*) FILTER (WHERE vote_result = '불참') as vote_absent,
+                    COUNT(DISTINCT member_no) as member_count
+                FROM votes
+                WHERE bill_id = %s
+                GROUP BY bill_id
+            ) v_stats ON b.bill_id = v_stats.bill_id
             WHERE b.bill_id = %s
-            GROUP BY b.bill_id
-        """, (bill_id,))
+        """, (bill_id, bill_id))
         
         bill = cur.fetchone()
         if not bill:
@@ -716,8 +738,11 @@ def db_structure():
         total_votes = 0
         
         for table_name in table_names:
-            # 데이터 개수
-            cur.execute(f"SELECT COUNT(*) as count FROM {table_name}")
+            # 데이터 개수 (bills는 2025년 의안만)
+            if table_name == 'bills':
+                cur.execute("SELECT COUNT(*) as count FROM bills WHERE proposal_date >= '2025-01-01'")
+            else:
+                cur.execute(f"SELECT COUNT(*) as count FROM {table_name}")
             row_count = cur.fetchone()['count']
             
             if table_name == 'bills':
@@ -725,7 +750,16 @@ def db_structure():
             elif table_name == 'assembly_members':
                 total_members = row_count
             elif table_name == 'votes':
-                total_votes = row_count
+                # votes도 2025년 의안과 연결된 것만
+                cur.execute("""
+                    SELECT COUNT(*) 
+                    FROM votes 
+                    WHERE bill_id IN (
+                        SELECT bill_id FROM bills WHERE proposal_date >= '2025-01-01'
+                    )
+                """)
+                total_votes = cur.fetchone()['count']
+                row_count = total_votes
             
             # 컬럼 정보
             cur.execute("""
