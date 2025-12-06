@@ -123,25 +123,6 @@ def migrate_table(local_cur, cloud_cur, cloud_conn, table_name):
         columns_str = ', '.join(common_columns)
         placeholders = ', '.join(['%s'] * len(common_columns))
         
-        # 기존 데이터 삭제
-        print(f"  🗑️ 기존 데이터 삭제 중...", end='', flush=True)
-        step_start = datetime.now()
-        try:
-            cloud_cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")
-            cloud_conn.commit()
-            print(f" (완료, {datetime.now() - step_start})", flush=True)
-        except Exception as e:
-            print(f" (실패: {e}, {datetime.now() - step_start})", flush=True)
-            cloud_conn.rollback()
-            # DELETE로 대체 시도
-            try:
-                cloud_cur.execute(f"DELETE FROM {table_name}")
-                cloud_conn.commit()
-                print(f"  (DELETE로 재시도 완료)", flush=True)
-            except Exception as e2:
-                print(f"  (DELETE도 실패: {e2})", flush=True)
-                cloud_conn.rollback()
-        
         # 스트리밍 방식으로 데이터 읽기 및 삽입
         print(f"  💾 데이터 삽입 시작 (스트리밍 방식)...")
         batch_size = 5000  # 배치 크기 증가
@@ -396,7 +377,88 @@ def main():
         'votes',
     ]
     
-    print("\n[3] 데이터 마이그레이션 시작...")
+    # 먼저 VM의 모든 기존 데이터를 완전히 삭제 (외래키 역순)
+    print("\n[3] VM 기존 데이터 완전 삭제 중...")
+    print("=" * 80)
+    delete_tables = ['votes', 'bills', 'assembly_members', 'proc_stage_mapping']
+    
+    try:
+        # 외래키 제약조건 일시 비활성화
+        print("  🔧 외래키 제약조건 일시 비활성화 중...", end='', flush=True)
+        try:
+            cloud_cur.execute("SET session_replication_role = replica;")
+            cloud_conn.commit()
+            print(" (완료)", flush=True)
+        except Exception as e:
+            print(f" (경고: {str(e)[:50]})", flush=True)
+            # 대안: 각 테이블의 트리거 비활성화
+            try:
+                cloud_cur.execute("ALTER TABLE votes DISABLE TRIGGER ALL;")
+                cloud_cur.execute("ALTER TABLE bills DISABLE TRIGGER ALL;")
+                cloud_conn.commit()
+                print("  (트리거 비활성화 완료)", flush=True)
+            except:
+                pass
+        
+        # 역순으로 데이터 삭제 (외래키 고려)
+        for table in delete_tables:
+            print(f"  🗑️ {table} 테이블 데이터 삭제 중...", end='', flush=True)
+            try:
+                # 먼저 데이터 개수 확인
+                cloud_cur.execute(f"SELECT COUNT(*) as cnt FROM {table}")
+                count = cloud_cur.fetchone()['cnt']
+                cloud_conn.commit()  # COUNT 쿼리 후 커밋
+                
+                if count > 0:
+                    try:
+                        cloud_cur.execute(f"TRUNCATE TABLE {table} CASCADE")
+                        cloud_conn.commit()
+                        print(f" (완료, {count:,}건 삭제)", flush=True)
+                    except Exception as e_truncate:
+                        cloud_conn.rollback()
+                        # TRUNCATE 실패 시 DELETE 시도
+                        try:
+                            cloud_cur.execute(f"DELETE FROM {table}")
+                            cloud_conn.commit()
+                            print(f" (DELETE로 완료, {count:,}건 삭제)", flush=True)
+                        except Exception as e_delete:
+                            cloud_conn.rollback()
+                            print(f" (경고: {str(e_delete)[:50]})", flush=True)
+                else:
+                    print(" (이미 비어있음)", flush=True)
+            except Exception as e:
+                cloud_conn.rollback()
+                print(f" (오류: {str(e)[:50]})", flush=True)
+        
+        # 외래키 제약조건 재활성화
+        print("  🔧 외래키 제약조건 재활성화 중...", end='', flush=True)
+        try:
+            cloud_conn.rollback()  # 이전 트랜잭션 정리
+            try:
+                cloud_cur.execute("SET session_replication_role = DEFAULT;")
+                cloud_conn.commit()
+            except:
+                cloud_conn.rollback()
+            try:
+                cloud_cur.execute("ALTER TABLE votes ENABLE TRIGGER ALL;")
+                cloud_conn.commit()
+            except:
+                cloud_conn.rollback()
+            try:
+                cloud_cur.execute("ALTER TABLE bills ENABLE TRIGGER ALL;")
+                cloud_conn.commit()
+            except:
+                cloud_conn.rollback()
+            print(" (완료)", flush=True)
+        except Exception as e:
+            cloud_conn.rollback()
+            print(f" (경고: {str(e)[:50]})", flush=True)
+    except Exception as e:
+        print(f"  ⚠️ 데이터 삭제 중 오류 발생: {e}")
+        cloud_conn.rollback()
+        print("  (계속 진행합니다...)")
+    
+    print("\n[4] 데이터 마이그레이션 시작...")
     print("=" * 80)
     overall_start_time = datetime.now()
     
