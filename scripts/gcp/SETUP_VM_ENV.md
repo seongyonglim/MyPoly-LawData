@@ -1,28 +1,42 @@
 # GCP VM 환경 설정 가이드
 
-## 1. Python 가상환경 패키지 설치
-```bash
-sudo apt update
-sudo apt install -y python3.10-venv python3-pip
-```
-
-## 2. 가상환경 생성 및 활성화
+## 방법 1: 시스템 Python 사용 (추천 - VM에서)
 ```bash
 cd ~/MyPoly-LawData
+
+# pip 업그레이드 (필요한 경우)
+python3 -m pip install --upgrade pip --user
+
+# 의존성 설치 (사용자 레벨)
+python3 -m pip install --user -r requirements.txt
+```
+
+## 방법 2: 기존 가상환경 사용
+```bash
+cd ~/MyPoly-LawData
+
+# 기존 가상환경이 있다면 활성화
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+    pip install -r requirements.txt
+fi
+```
+
+## 방법 3: 새 가상환경 생성 (필요한 경우만)
+```bash
+cd ~/MyPoly-LawData
+
+# Python 가상환경 패키지 설치 (필요한 경우만)
+sudo apt update
+sudo apt install -y python3.10-venv python3-pip
 
 # 가상환경 생성
 python3 -m venv .venv
 
 # 가상환경 활성화
 source .venv/bin/activate
-```
 
-## 3. 의존성 설치
-```bash
-# pip 업그레이드
-pip install --upgrade pip
-
-# requirements.txt 설치
+# 의존성 설치
 pip install -r requirements.txt
 ```
 
@@ -40,9 +54,13 @@ ls -la .env
 # - GEMINI_API_KEY
 ```
 
-## 5. 앱 실행 테스트
+## 4. 앱 실행 테스트
 ```bash
-# 가상환경 활성화 상태에서
+# 시스템 Python 사용 시
+python3 app.py
+
+# 가상환경 사용 시
+source .venv/bin/activate
 python app.py
 
 # 또는 systemd 서비스로 실행
@@ -50,28 +68,21 @@ sudo systemctl start mypoly-lawdata
 sudo systemctl status mypoly-lawdata
 ```
 
-## 전체 설정 스크립트 (한 번에 실행)
+## Git Pull 후 빠른 업데이트 (추천)
 ```bash
 cd ~/MyPoly-LawData
 
-# 패키지 설치
-sudo apt update
-sudo apt install -y python3.10-venv python3-pip
+# 최신 코드 가져오기
+git pull origin main
 
-# 가상환경 생성
-python3 -m venv .venv
+# 의존성만 업데이트 (시스템 Python 사용)
+python3 -m pip install --user --upgrade -r requirements.txt
 
-# 가상환경 활성화
+# 또는 가상환경 사용 시
 source .venv/bin/activate
+pip install --upgrade -r requirements.txt
 
-# pip 업그레이드
-pip install --upgrade pip
-
-# 의존성 설치
-pip install -r requirements.txt
-
-# 확인
-python --version
-pip list
+# 앱 재시작
+sudo systemctl restart mypoly-lawdata
 ```
 
