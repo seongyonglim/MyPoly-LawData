@@ -99,6 +99,12 @@ cd C:\polywave\MyPoly-LawData
 # 가상환경 활성화
 .venv\Scripts\Activate.ps1
 
+# 필요한 패키지 설치 (처음 한 번만)
+pip install python-dotenv psycopg2-binary
+
+# 또는 requirements.txt의 모든 패키지 설치
+# pip install -r requirements.txt
+
 # 마이그레이션 실행
 python scripts/gcp/migrate_direct_public_ip.py
 ```
