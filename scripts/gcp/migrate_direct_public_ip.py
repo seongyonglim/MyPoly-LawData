@@ -18,8 +18,18 @@ if sys.platform == 'win32':
 
 import os
 from dotenv import load_dotenv
+import sys
 
-load_dotenv()
+# Windows에서 .env 파일 인코딩 문제 해결
+if sys.platform == 'win32':
+    # UTF-8로 .env 파일 읽기 시도
+    try:
+        load_dotenv(encoding='utf-8')
+    except:
+        # UTF-8 실패 시 기본 인코딩 시도
+        load_dotenv()
+else:
+    load_dotenv()
 
 # 로컬 DB 설정
 LOCAL_DB = {
