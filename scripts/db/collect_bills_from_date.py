@@ -13,6 +13,7 @@ from xml.etree import ElementTree as ET
 import requests
 from datetime import datetime
 import time
+import re
 
 if sys.platform == 'win32':
     import io
@@ -110,6 +111,33 @@ def parse_date(date_str):
     except:
         pass
     return None
+
+def extract_proposer_name_from_title(title):
+    """
+    의안 제목에서 제안자 이름 추출
+    형식: "의안명(제안자명의원 등 N인)" 또는 "의안명(제안자명의원)"
+    예: "재난 및 안전관리 기본법 일부개정법률안(임종득의원 등 10인)"
+    """
+    if not title:
+        return ""
+    
+    # 괄호 안의 내용 추출
+    match = re.search(r'\(([^)]+)\)', title)
+    if not match:
+        return ""
+    
+    proposer_text = match.group(1)
+    
+    # "의원" 키워드가 있으면 그 앞의 이름 추출
+    # 예: "임종득의원 등 10인" -> "임종득"
+    # 예: "정태호의원 등 10인" -> "정태호"
+    # 예: "임미애의원 등 21인" -> "임미애"
+    proposer_match = re.search(r'([가-힣]+)의원', proposer_text)
+    if proposer_match:
+        return proposer_match.group(1)
+    
+    # "의원" 키워드가 없으면 전체를 반환 (예: "의장", "정부" 등)
+    return proposer_text.strip()
 
 def get_latest_proposal_date():
     """DB에서 가장 최근 제안일 가져오기"""
@@ -242,15 +270,20 @@ def collect_bills_from_date(start_date_str=None, end_date_str=None):
                 bill_no = item.findtext("billNo", "").strip()
                 title = item.findtext("billName", "").strip()
                 proposer_kind = item.findtext("proposerKind", "").strip()
-                # 제안자 이름: proposerNm 또는 proposerName 필드 확인
+                # 제안자 이름: API 필드 먼저 확인, 없으면 의안 제목에서 추출
                 proposer_name = item.findtext("proposerNm", "") or item.findtext("proposerName", "")
                 proposer_name = proposer_name.strip() if proposer_name else ""
+                # API 필드에 없으면 의안 제목에서 추출
+                if not proposer_name:
+                    proposer_name = extract_proposer_name_from_title(title)
                 proc_stage_cd = item.findtext("procStageCd", "").strip()
                 pass_gubn = item.findtext("passGubn", "").strip()
                 proc_date = parse_date(item.findtext("procDt", ""))
                 general_result = item.findtext("generalResult", "").strip()
                 summary_raw = item.findtext("summary", "").strip()
-                link_url = item.findtext("linkUrl", "").strip()
+                # linkUrl 필드는 API에 없으므로 billId로 생성
+                # 국회 의안 상세 페이지: https://likms.assembly.go.kr/bill/billDetail.do?billId={billId}
+                link_url = f"https://likms.assembly.go.kr/bill/billDetail.do?billId={bill_id}" if bill_id else ""
                 
                 try:
                     cur.execute("""

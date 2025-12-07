@@ -1013,8 +1013,8 @@ def get_bills_quality_stats():
             ('proc_date', '처리일', 'default'),
             ('general_result', '일반결과', 'default'),
             ('summary_raw', '원문내용', 'text'),  # 텍스트 필드: 빈 문자열도 체크
-            ('headline', 'AI 헤드라인', 'jsonb'),  # JSONB 필드
-            ('summary', 'AI 요약', 'jsonb'),  # JSONB 필드
+            ('headline', 'AI 헤드라인', 'text'),  # 텍스트 필드: 빈 문자열도 체크
+            ('summary', 'AI 요약', 'text'),  # 텍스트 필드: 빈 문자열도 체크
             ('categories', '카테고리', 'jsonb'),  # JSONB 필드
             ('vote_for', '찬성 가중치', 'jsonb'),  # JSONB 필드
             ('vote_against', '반대 가중치', 'jsonb'),  # JSONB 필드
