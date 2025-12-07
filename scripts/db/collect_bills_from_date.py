@@ -139,6 +139,39 @@ def extract_proposer_name_from_title(title):
     # "의원" 키워드가 없으면 전체를 반환 (예: "의장", "정부" 등)
     return proposer_text.strip()
 
+def calculate_proc_stage_order(proc_stage_cd):
+    """
+    proc_stage_cd를 기반으로 proc_stage_order 계산
+    1=접수, 2=심사, 3=본회의, 4=처리완료
+    """
+    if not proc_stage_cd:
+        return None
+    
+    proc_stage_cd = proc_stage_cd.strip()
+    
+    # 접수 관련
+    if '접수' in proc_stage_cd:
+        return 1
+    
+    # 심사 관련
+    if '심사' in proc_stage_cd:
+        return 2
+    
+    # 본회의 관련
+    if '본회의' in proc_stage_cd:
+        return 3
+    
+    # 처리완료 관련 (공포, 정부이송 등)
+    if any(keyword in proc_stage_cd for keyword in ['공포', '정부이송', '처리완료']):
+        return 4
+    
+    # 기타 (철회, 폐기 등)
+    if any(keyword in proc_stage_cd for keyword in ['철회', '폐기', '재의']):
+        return None  # 처리되지 않은 것으로 간주
+    
+    # 기본값: None
+    return None
+
 def get_latest_proposal_date():
     """DB에서 가장 최근 제안일 가져오기"""
     conn = get_db_connection()
@@ -284,17 +317,19 @@ def collect_bills_from_date(start_date_str=None, end_date_str=None):
                 # linkUrl 필드는 API에 없으므로 billId로 생성
                 # 국회 의안 상세 페이지: https://likms.assembly.go.kr/bill/billDetail.do?billId={billId}
                 link_url = f"https://likms.assembly.go.kr/bill/billDetail.do?billId={bill_id}" if bill_id else ""
+                # proc_stage_order 계산
+                proc_stage_order = calculate_proc_stage_order(proc_stage_cd)
                 
                 try:
                     cur.execute("""
                         INSERT INTO bills (
                             bill_id, bill_no, title, proposal_date, proposer_kind, proposer_name,
                             proc_stage_cd, pass_gubn, proc_date, general_result,
-                            summary_raw, link_url, created_at, updated_at
+                            summary_raw, link_url, proc_stage_order, created_at, updated_at
                         ) VALUES (
                             %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s,
-                            %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                            %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         ON CONFLICT (bill_id) 
                         DO UPDATE SET
@@ -309,11 +344,12 @@ def collect_bills_from_date(start_date_str=None, end_date_str=None):
                             general_result = EXCLUDED.general_result,
                             summary_raw = EXCLUDED.summary_raw,
                             link_url = EXCLUDED.link_url,
+                            proc_stage_order = EXCLUDED.proc_stage_order,
                             updated_at = CURRENT_TIMESTAMP
                     """, (
                         bill_id, bill_no, title, proposal_date, proposer_kind, proposer_name,
                         proc_stage_cd, pass_gubn, proc_date, general_result,
-                        summary_raw, link_url
+                        summary_raw, link_url, proc_stage_order
                     ))
                     
                     if cur.rowcount > 0:
