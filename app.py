@@ -1000,38 +1000,62 @@ def get_bills_quality_stats():
         total = cur.fetchone()['total']
         
         # 필드별 NULL 비율 계산
+        # 텍스트 필드는 NULL과 빈 문자열 모두 체크
         fields = [
-            ('bill_id', '의안ID'),
-            ('bill_no', '의안번호'),
-            ('title', '의안명'),
-            ('proposal_date', '제안일'),
-            ('proposer_kind', '제안자구분'),
-            ('proposer_name', '제안자명'),
-            ('proc_stage_cd', '진행단계'),
-            ('pass_gubn', '처리구분'),
-            ('proc_date', '처리일'),
-            ('general_result', '일반결과'),
-            ('summary_raw', '원문내용'),
-            ('headline', 'AI 헤드라인'),
-            ('summary', 'AI 요약'),
-            ('categories', '카테고리'),
-            ('vote_for', '찬성 가중치'),
-            ('vote_against', '반대 가중치'),
-            ('proc_stage_order', '진행단계 순서'),
-            ('proposer_count', '제안자 수'),
-            ('link_url', '링크 URL'),
+            ('bill_id', '의안ID', 'default'),
+            ('bill_no', '의안번호', 'default'),
+            ('title', '의안명', 'default'),
+            ('proposal_date', '제안일', 'default'),
+            ('proposer_kind', '제안자구분', 'default'),
+            ('proposer_name', '제안자명', 'default'),
+            ('proc_stage_cd', '진행단계', 'default'),
+            ('pass_gubn', '처리구분', 'default'),
+            ('proc_date', '처리일', 'default'),
+            ('general_result', '일반결과', 'default'),
+            ('summary_raw', '원문내용', 'text'),  # 텍스트 필드: 빈 문자열도 체크
+            ('headline', 'AI 헤드라인', 'jsonb'),  # JSONB 필드
+            ('summary', 'AI 요약', 'jsonb'),  # JSONB 필드
+            ('categories', '카테고리', 'jsonb'),  # JSONB 필드
+            ('vote_for', '찬성 가중치', 'jsonb'),  # JSONB 필드
+            ('vote_against', '반대 가중치', 'jsonb'),  # JSONB 필드
+            ('proc_stage_order', '진행단계 순서', 'default'),
+            ('proposer_count', '제안자 수', 'default'),
+            ('link_url', '링크 URL', 'text'),  # 텍스트 필드: 빈 문자열도 체크
         ]
         
         field_stats = []
-        for field, label in fields:
-            cur.execute(f"""
-                SELECT 
-                    COUNT(*) as total,
-                    COUNT({field}) as filled,
-                    COUNT(*) - COUNT({field}) as missing
-                FROM bills
-                WHERE proposal_date >= '2025-01-01'
-            """)
+        for field, label, field_type in fields:
+            if field_type == 'text':
+                # 텍스트 필드: NULL과 빈 문자열(공백 제거 후) 모두 체크
+                cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE {field} IS NOT NULL AND TRIM({field}) != '') as filled,
+                        COUNT(*) FILTER (WHERE {field} IS NULL OR TRIM({field}) = '') as missing
+                    FROM bills
+                    WHERE proposal_date >= '2025-01-01'
+                """)
+            elif field_type == 'jsonb':
+                # JSONB 필드: NULL과 빈 객체 체크
+                cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE {field} IS NOT NULL AND {field} != 'null'::jsonb AND {field} != '{{}}'::jsonb) as filled,
+                        COUNT(*) FILTER (WHERE {field} IS NULL OR {field} = 'null'::jsonb OR {field} = '{{}}'::jsonb) as missing
+                    FROM bills
+                    WHERE proposal_date >= '2025-01-01'
+                """)
+            else:
+                # 기본 필드: NULL만 체크
+                cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT({field}) as filled,
+                        COUNT(*) - COUNT({field}) as missing
+                    FROM bills
+                    WHERE proposal_date >= '2025-01-01'
+                """)
+            
             result = cur.fetchone()
             filled = result['filled']
             missing = result['missing']
@@ -1066,15 +1090,15 @@ def get_bills_quality_stats():
                     CASE WHEN pass_gubn IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN proc_date IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN general_result IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN summary_raw IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END +
-                    CASE WHEN summary IS NOT NULL AND summary != '' THEN 1 ELSE 0 END +
-                    CASE WHEN categories IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN vote_for IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN vote_against IS NOT NULL THEN 1 ELSE 0 END +
+                    CASE WHEN summary_raw IS NOT NULL AND TRIM(summary_raw) != '' THEN 1 ELSE 0 END +
+                    CASE WHEN headline IS NOT NULL AND TRIM(headline) != '' THEN 1 ELSE 0 END +
+                    CASE WHEN summary IS NOT NULL AND TRIM(summary) != '' THEN 1 ELSE 0 END +
+                    CASE WHEN categories IS NOT NULL AND categories != 'null'::jsonb AND categories != '{}'::jsonb THEN 1 ELSE 0 END +
+                    CASE WHEN vote_for IS NOT NULL AND vote_for != 'null'::jsonb AND vote_for != '{}'::jsonb THEN 1 ELSE 0 END +
+                    CASE WHEN vote_against IS NOT NULL AND vote_against != 'null'::jsonb AND vote_against != '{}'::jsonb THEN 1 ELSE 0 END +
                     CASE WHEN proc_stage_order IS NOT NULL THEN 1 ELSE 0 END +
                     CASE WHEN proposer_count IS NOT NULL THEN 1 ELSE 0 END +
-                    CASE WHEN link_url IS NOT NULL THEN 1 ELSE 0 END
+                    CASE WHEN link_url IS NOT NULL AND TRIM(link_url) != '' THEN 1 ELSE 0 END
                 ) as filled_fields,
                 19 as total_fields
             FROM bills
